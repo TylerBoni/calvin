@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">calvin</string>
+    <string name="title_activity_main">calvin</string>
+    <string name="package_name">com.tylerboni.calvin</string>
+    <string name="custom_url_scheme">com.tylerboni.calvin</string>
+</resources>

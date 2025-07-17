@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Inter", "sans-serif";
+  --font-body: "Inter", "sans-serif";
+  --breakpoint-3xl: 1920px;
+  
+  /* Custom colors for the calendar app */
+  --color-primary-50: oklch(0.97 0.02 250);
+  --color-primary-100: oklch(0.94 0.05 250);
+  --color-primary-200: oklch(0.86 0.1 250);
+  --color-primary-300: oklch(0.77 0.15 250);
+  --color-primary-400: oklch(0.66 0.2 250);
+  --color-primary-500: oklch(0.55 0.25 250);
+  --color-primary-600: oklch(0.45 0.25 250);
+  --color-primary-700: oklch(0.35 0.2 250);
+  --color-primary-800: oklch(0.25 0.15 250);
+  --color-primary-900: oklch(0.15 0.1 250);
+  --color-primary-950: oklch(0.08 0.05 250);
+  
+  /* Success colors for events */
+  --color-success-50: oklch(0.96 0.03 120);
+  --color-success-500: oklch(0.62 0.15 120);
+  --color-success-600: oklch(0.55 0.15 120);
+  
+  /* Warning colors for conflicts */
+  --color-warning-50: oklch(0.96 0.05 60);
+  --color-warning-500: oklch(0.75 0.12 60);
+  --color-warning-600: oklch(0.68 0.12 60);
+  
+  /* Custom animations */
+  --ease-bounce-in: cubic-bezier(0.6, -0.28, 0.735, 0.045);
+  --ease-bounce-out: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Custom utilities */
+@utility glass {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+@utility glass-dark {
+  background: rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Calendar grid utilities */
+@utility calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+}
+
+@utility calendar-day {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Base styles */
+body {
+  font-family: var(--font-body);
+  line-height: 1.6;
+  color: rgb(15 23 42);
+  background: rgb(248 250 252);
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  body {
+    color: rgb(248 250 252);
+    background: rgb(15 23 42);
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* Focus styles */
+:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+/* Animations */
+@keyframes slideIn {
+  from {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
