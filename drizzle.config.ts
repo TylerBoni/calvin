@@ -8,7 +8,7 @@ if (!process.env.VITE_SUPABASE_DB_URL) {
 }
 
 export default {
-  schema: './src/lib/schema.ts',
+  schema: './src/lib/db/schema.ts',
   out: './drizzle',
   driver: 'pg',
   dbCredentials: {

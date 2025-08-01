@@ -6,6 +6,66 @@ type EventInsert = Database['public']['Tables']['events']['Insert'];
 type EventUpdate = Database['public']['Tables']['events']['Update'];
 type UserPreferences = Database['public']['Tables']['user_preferences']['Row'];
 
+// Define User types manually since they're missing from the generated types
+type User = {
+  id: string;
+  email: string;
+  name?: string | null;
+  password_hash?: string | null;
+  avatar?: string | null;
+  email_verified?: boolean;
+  provider?: string;
+  provider_id?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type UserInsert = {
+  id: string;
+  email: string;
+  name?: string | null;
+  password_hash?: string | null;
+  avatar?: string | null;
+  email_verified?: boolean;
+  provider?: string;
+  provider_id?: string | null;
+};
+
+// User functions
+export async function getUser(userId: string) {
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', userId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error; // PGRST116 is "not found"
+  return data as User | null;
+}
+
+export async function createUser(user: UserInsert) {
+  const { data, error } = await supabase
+    .from('users')
+    .insert(user)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as User;
+}
+
+export async function updateUser(userId: string, updates: Partial<UserInsert>) {
+  const { data, error } = await supabase
+    .from('users')
+    .update(updates)
+    .eq('id', userId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as User;
+}
+
 // Event functions
 export async function getEvents(userId: string, startDate?: string, endDate?: string) {
   let query = supabase

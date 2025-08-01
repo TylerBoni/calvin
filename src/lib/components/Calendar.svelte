@@ -1,6 +1,13 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, createEventDispatcher } from 'svelte';
   import { supabase } from '../supabase';
+  import { Button } from '$lib/components/ui/button';
+  import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
+  import { Badge } from '$lib/components/ui/badge';
+  import { Switch } from '$lib/components/ui/switch';
+  import { Input } from '$lib/components/ui/input';
+  
+  const dispatch = createEventDispatcher();
   
   type Event = {
     id: string;
@@ -32,6 +39,8 @@
   let events = $state<Event[]>([]);
   let loading = $state(false);
   let viewMode = $state('month'); // 'month', 'week', 'day'
+  let showWeekends = $state(true); // Toggle for showing/hiding weekends
+  let deletingEventId = $state<string | null>(null); // Track which event is being deleted
 
   // Calendar state - compute calendar days
   function getCalendarDays(): CalendarDay[] {
@@ -50,19 +59,46 @@
     // Add empty cells for days before month starts
     for (let i = 0; i < startingDayOfWeek; i++) {
       const prevDate = new Date(year, month, -startingDayOfWeek + i + 1);
+      
+      // Skip weekends if showWeekends is false
+      if (!showWeekends && (prevDate.getDay() === 0 || prevDate.getDay() === 6)) {
+        continue;
+      }
+      
+      const isToday = prevDate.toDateString() === new Date().toDateString();
+      const isSelected = prevDate.toDateString() === selectedDate.toDateString();
+      
+      // Find events for this day - including multi-day events
+      const dayEvents = events.filter(event => {
+        const eventStart = new Date(event.start_time);
+        const eventEnd = new Date(event.end_time);
+        const dayStart = new Date(prevDate.getFullYear(), prevDate.getMonth(), prevDate.getDate());
+        const dayEnd = new Date(prevDate.getFullYear(), prevDate.getMonth(), prevDate.getDate(), 23, 59, 59);
+        
+        // Event overlaps with this day if:
+        // Event starts before or on this day AND event ends on or after this day
+        return eventStart <= dayEnd && eventEnd >= dayStart;
+      });
+      
       days.push({
         date: prevDate,
         day: prevDate.getDate(),
         isCurrentMonth: false,
-        isToday: false,
-        isSelected: false,
-        events: []
+        isToday,
+        isSelected,
+        events: dayEvents
       });
     }
     
     // Add days of current month
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month, day);
+      
+      // Skip weekends if showWeekends is false
+      if (!showWeekends && (date.getDay() === 0 || date.getDay() === 6)) {
+        continue;
+      }
+      
       const isToday = date.toDateString() === new Date().toDateString();
       const isSelected = date.toDateString() === selectedDate.toDateString();
       
@@ -88,50 +124,71 @@
       });
     }
     
-    // Add days from next month to fill grid
-    const remainingCells = 42 - days.length; // 6 rows × 7 days
-    for (let day = 1; day <= remainingCells; day++) {
-      const date = new Date(year, month + 1, day);
+    // Add empty cells for days after month ends
+    const lastDayOfWeek = lastDay.getDay();
+    for (let i = lastDayOfWeek + 1; i < 7; i++) {
+      const nextDate = new Date(year, month + 1, i - lastDayOfWeek);
+      
+      // Skip weekends if showWeekends is false
+      if (!showWeekends && (nextDate.getDay() === 0 || nextDate.getDay() === 6)) {
+        continue;
+      }
+      
+      const isToday = nextDate.toDateString() === new Date().toDateString();
+      const isSelected = nextDate.toDateString() === selectedDate.toDateString();
+      
+      // Find events for this day - including multi-day events
+      const dayEvents = events.filter(event => {
+        const eventStart = new Date(event.start_time);
+        const eventEnd = new Date(event.end_time);
+        const dayStart = new Date(nextDate.getFullYear(), nextDate.getMonth(), nextDate.getDate());
+        const dayEnd = new Date(nextDate.getFullYear(), nextDate.getMonth(), nextDate.getDate(), 23, 59, 59);
+        
+        // Event overlaps with this day if:
+        // Event starts before or on this day AND event ends on or after this day
+        return eventStart <= dayEnd && eventEnd >= dayStart;
+      });
+      
       days.push({
-        date,
-        day,
+        date: nextDate,
+        day: nextDate.getDate(),
         isCurrentMonth: false,
-        isToday: false,
-        isSelected: false,
-        events: []
+        isToday,
+        isSelected,
+        events: dayEvents
       });
     }
     
     return days;
   }
 
-  onMount(() => {
-    loadEvents();
-  });
-
-  // Reactive statement to reload events when currentDate changes
-  $effect(() => {
-    loadEvents();
-  });
+  // Week day labels
+  const weekDays = showWeekends 
+    ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
   async function loadEvents() {
     loading = true;
     try {
-      // Load events for a wider range to ensure we get all events
-      const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-      const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+      // Get events for an extended range to handle multi-day events
+      const extendedStart = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
+      const extendedEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 2, 0);
+      
+      // Set time to cover the full extended range
+      const viewStart = new Date(extendedStart.getFullYear(), extendedStart.getMonth(), extendedStart.getDate());
+      const viewEnd = new Date(extendedEnd.getFullYear(), extendedEnd.getMonth(), extendedEnd.getDate(), 23, 59, 59);
       
       const { data, error } = await supabase
         .from('events')
         .select('*')
         .eq('user_id', user.id)
-        .gte('start_time', startOfMonth.toISOString())
-        .lte('start_time', endOfMonth.toISOString());
+        .or(`start_time.lte.${viewEnd.toISOString()},end_time.gte.${viewStart.toISOString()}`);
 
       if (error) throw error;
       events = data || [];
       console.log('Calendar loaded events:', events.length, events);
       console.log('Sample event structure:', events[0]);
+      console.log('Extended view period:', viewStart.toISOString(), 'to', viewEnd.toISOString());
       
       // Debug: log the computed calendar days
       if (events.length > 0) {
@@ -207,9 +264,9 @@
   function getEventColor(event: Event) {
     // Color based on event confidence or type
     if (event.confidence && event.confidence < 70) {
-      return 'bg-warning-100 text-warning-700 border-warning-200';
+      return 'destructive';
     }
-    return 'bg-primary-100 text-primary-700 border-primary-200';
+    return 'default';
   }
 
   function getEventDisplayInfo(event: Event, currentDay: Date) {
@@ -217,190 +274,265 @@
     const end = new Date(event.end_time);
     const isMultiDay = start.toDateString() !== end.toDateString();
     
-    let title = event.title;
-    let prefix = '';
-    
     if (isMultiDay) {
-      const currentDayStr = currentDay.toDateString();
-      const startDayStr = start.toDateString();
-      const endDayStr = end.toDateString();
+      // For multi-day events, show different info based on the day
+      const currentDayStart = new Date(currentDay.getFullYear(), currentDay.getMonth(), currentDay.getDate());
+      const currentDayEnd = new Date(currentDay.getFullYear(), currentDay.getMonth(), currentDay.getDate(), 23, 59, 59);
       
-      if (currentDayStr === startDayStr) {
-        prefix = '▶ '; // Start of event
-      } else if (currentDayStr === endDayStr) {
-        prefix = '◀ '; // End of event
+      if (start <= currentDayStart && end >= currentDayEnd) {
+        // Event spans the entire day
+        return { title: event.title, isStart: false, isEnd: false };
+      } else if (start <= currentDayStart && end < currentDayEnd) {
+        // Event ends on this day
+        return { title: event.title, isStart: false, isEnd: true };
+      } else if (start > currentDayStart && end >= currentDayEnd) {
+        // Event starts on this day
+        return { title: event.title, isStart: true, isEnd: false };
       } else {
-        prefix = '― '; // Middle of event
+        // Event is contained within this day
+        return { title: event.title, isStart: true, isEnd: true };
       }
     }
     
-    return { title: prefix + title, isMultiDay };
+    // Single day event
+    return { title: event.title, isStart: true, isEnd: true };
   }
 
-  const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  function openEventCreator() {
+    // Dispatch event to change view to create
+    dispatch('viewChange', { view: 'create' });
+  }
+
+  function openEventEditor(event: Event) {
+    // Dispatch event to change view to edit with event data
+    dispatch('viewChange', { view: 'edit', event });
+  }
+
+  async function deleteEvent(eventId: string) {
+    if (!confirm('Are you sure you want to delete this event?')) {
+      return;
+    }
+
+    deletingEventId = eventId;
+    try {
+      const { error } = await supabase
+        .from('events')
+        .delete()
+        .eq('id', eventId)
+        .eq('user_id', user.id); // Ensure user can only delete their own events
+
+      if (error) throw error;
+      
+      // Remove event from local state
+      events = events.filter(e => e.id !== eventId);
+      console.log('Event deleted successfully');
+    } catch (error) {
+      console.error('Failed to delete event:', error);
+      alert('Failed to delete event. Please try again.');
+    } finally {
+      deletingEventId = null;
+    }
+  }
+
+  function handleEventCreated() {
+    // Reload events when a new event is created
+    loadEvents();
+  }
+
+  onMount(() => {
+    loadEvents();
+  });
 </script>
 
-<div class="max-w-6xl mx-auto">
-  <!-- Calendar Header -->
-  <div class="flex justify-between items-center mb-6">
-    <div>
-      <h2 class="text-3xl font-bold text-slate-900 dark:text-white">
-        {formatMonth(currentDate)}
-      </h2>
-      <p class="text-slate-600 dark:text-slate-400 mt-1">
-        {events.length} events scheduled
-      </p>
+<div class="space-y-6 px-2 pt-6">
+  <!-- Month Navigation and Add Button -->
+  <div class="flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <Button variant="ghost" size="icon" onclick={previousMonth} class="h-8 w-8">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+        </svg>
+      </Button>
+      <span class="text-lg font-medium text-foreground">{formatMonth(currentDate)}</span>
+      <Button variant="ghost" size="icon" onclick={nextMonth} class="h-8 w-8">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+        </svg>
+      </Button>
     </div>
-    
-    <div class="flex items-center space-x-3">
-      <button
-        onclick={goToToday}
-        class="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-      >
-        Today
-      </button>
-      
-      <div class="flex items-center space-x-1">
-        <button
-          onclick={previousMonth}
-          class="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
-          </svg>
-        </button>
         
-        <button
-          onclick={nextMonth}
-          class="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-          </svg>
-        </button>
-      </div>
-    </div>
+    <!-- Add Event Button -->
+    <Button variant="outline" size="icon" onclick={openEventCreator} class="h-8 w-8">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+      </svg>
+    </Button>
+
   </div>
 
-  <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 lg:gap-6">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <!-- Calendar Grid -->
-    <div class="lg:col-span-3 order-2 lg:order-1">
-      <div class="glass rounded-2xl p-3 sm:p-6 border border-white/20">
-        {#if loading}
-          <div class="flex items-center justify-center h-64">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+    <div class="lg:col-span-2">
+      <Card>
+        <CardHeader class="pb-2">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-muted-foreground">Weekends</span>
+              <Switch
+                id="show-weekends"
+                checked={showWeekends}
+                onCheckedChange={() => showWeekends = !showWeekends}
+              />
+            </div>
           </div>
-        {:else}
-          <!-- Week headers -->
-          <div class="grid grid-cols-7 gap-px mb-2">
-            {#each weekDays as day}
-              <div class="p-3 text-center text-sm font-medium text-slate-500 dark:text-slate-400">
-                {day}
-              </div>
-            {/each}
-          </div>
-          
-          <!-- Calendar days -->
-          <div class="grid grid-cols-7 gap-1">
-            {#each getCalendarDays() as day}
-              <button
-                onclick={() => selectDate(day)}
-                class="aspect-square min-h-[60px] sm:min-h-[80px] lg:min-h-[100px] p-1 sm:p-2 flex flex-col
-                       {day.isCurrentMonth 
-                         ? 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700' 
-                         : 'bg-slate-50 dark:bg-slate-900 text-slate-400 dark:text-slate-600'}
-                       {day.isSelected ? 'ring-1 sm:ring-2 ring-primary-500' : ''}
-                       {day.isToday ? 'bg-primary-50 dark:bg-primary-900/20' : ''}
-                       transition-colors cursor-pointer rounded-md sm:rounded-lg border border-slate-200 dark:border-slate-700"
-              >
-                <span class="text-xs sm:text-sm font-medium mb-0.5 sm:mb-1 
-                           {day.isToday ? 'text-primary-600 dark:text-primary-400' : ''}
-                           {day.isSelected ? 'text-primary-700 dark:text-primary-300' : ''}">
-                  {day.day}
-                </span>
-                
-                <!-- Event indicators -->
-                <div class="flex-1 space-y-0.5 sm:space-y-1 overflow-hidden">
-                  {#each day.events.slice(0, 3) as event, index}
-                    {@const eventInfo = getEventDisplayInfo(event, day.date)}
-                    <div class="text-[10px] sm:text-xs px-0.5 sm:px-1 py-0.5 rounded {getEventColor(event)} truncate leading-tight
-                               {index >= 1 ? 'hidden sm:block' : ''}">
-                      <span class="hidden sm:inline">{eventInfo.title}</span>
-                      <span class="sm:hidden">{eventInfo.title.length > 6 ? eventInfo.title.substring(0, 6) + '…' : eventInfo.title}</span>
-                    </div>
-                  {/each}
-                  
-                  {#if day.events.length > 1}
-                    <div class="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium">
-                      <span class="sm:hidden">+{day.events.length - 1}</span>
-                      <span class="hidden sm:inline">+{day.events.length - 3} more</span>
-                    </div>
-                  {/if}
-                </div>
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </div>
-    </div>
-
-    <!-- Selected Day Events -->
-    <div class="lg:col-span-1 order-1 lg:order-2">
-      <div class="glass rounded-2xl p-4 sm:p-6 border border-white/20">
-        <h3 class="text-base sm:text-lg font-semibold text-slate-900 dark:text-white mb-3 sm:mb-4">
-          {selectedDate.toLocaleDateString('en-US', { 
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric'
-          })}
-        </h3>
-        
-        {#if selectedDate}
-          {@const dayEvents = events.filter(event => {
-            const eventStart = new Date(event.start_time);
-            const eventEnd = new Date(event.end_time);
-            const dayStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
-            const dayEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 23, 59, 59);
-            
-            // Event overlaps with selected day
-            return eventStart <= dayEnd && eventEnd >= dayStart;
-          })}
-          
-          {#if dayEvents.length === 0}
-            <p class="text-slate-500 dark:text-slate-400 text-sm">
-              No events scheduled
-            </p>
+        </CardHeader>
+        <CardContent class="p-2">
+          {#if loading}
+            <div class="flex items-center justify-center h-64">
+              <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+            </div>
           {:else}
-            <div class="space-y-3">
-              {#each dayEvents as event}
-                <div class="p-3 bg-white/50 dark:bg-slate-800/50 rounded-lg border border-white/20">
-                  <h4 class="font-medium text-slate-900 dark:text-white text-sm">
-                    {event.title}
-                  </h4>
-                  <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    {formatEventTime(event)}
-                  </p>
-                  {#if event.location}
-                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      📍 {event.location}
-                    </p>
-                  {/if}
-                  {#if event.confidence && event.confidence < 70}
-                    <p class="text-xs text-warning-600 dark:text-warning-400 mt-1">
-                      ⚠️ Low confidence
-                    </p>
-                  {/if}
+            <!-- Week headers -->
+            <div class="grid mb-1 {showWeekends ? 'grid-cols-7' : 'grid-cols-5'}">
+              {#each weekDays as day, index}
+                <div class="p-1 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  {day}
                 </div>
               {/each}
             </div>
+            
+            <!-- Calendar days -->
+            <div class="grid gap-0.5 {showWeekends ? 'grid-cols-7' : 'grid-cols-5'}">
+              {#each getCalendarDays() as day, index}
+                <Button
+                  variant="ghost"
+                  class="h-12 flex flex-col items-start justify-start p-1 rounded-none
+                         {day.isCurrentMonth ? '' : 'text-muted-foreground'}
+                         {day.isSelected ? 'bg-accent text-accent-foreground' : ''}
+                         {day.isToday ? 'bg-primary/20 text-primary ring-1 ring-primary' : ''}
+                         hover:bg-accent/50"
+                  onclick={() => selectDate(day)}
+                >
+                  <span class="text-xs font-medium leading-none">
+                    {day.day}
+                  </span>
+                  
+                  <!-- Event indicators -->
+                  <div class="flex-1 w-full space-y-0.5 mt-0.5">
+                    {#each day.events.slice(0, 3).sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()) as event, eventIndex}
+                      {@const eventInfo = getEventDisplayInfo(event, day.date)}
+                      <div class="flex items-center gap-1">
+                        <div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                        <span class="text-xs truncate text-muted-foreground">
+                          {eventInfo.title}
+                        </span>
+                      </div>
+                    {/each}
+                    
+                    {#if day.events.length > 3}
+                      <div class="text-xs text-muted-foreground">
+                        +{day.events.length - 3} more
+                      </div>
+                    {/if}
+                  </div>
+                </Button>
+              {/each}
+            </div>
           {/if}
-        {/if}
-        
-        <!-- Quick add button -->
-        <button class="w-full mt-4 p-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg text-slate-500 dark:text-slate-400 hover:border-primary-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors text-sm">
-          + Add event for this day
-        </button>
-      </div>
+        </CardContent>
+      </Card>
+    </div>
+
+    <!-- Selected Day Events -->
+    <div>
+      <Card>
+        <CardHeader class="pb-2">
+          <CardTitle class="text-base">
+            {selectedDate.toLocaleDateString('en-US', { 
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric'
+            })}
+          </CardTitle>
+        </CardHeader>
+        <CardContent class="space-y-2 p-3">
+          {#if selectedDate}
+            {@const dayEvents = events.filter(event => {
+              const eventStart = new Date(event.start_time);
+              const eventEnd = new Date(event.end_time);
+              const dayStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+              const dayEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 23, 59, 59);
+              
+              return eventStart <= dayEnd && eventEnd >= dayStart;
+            }).sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())}
+            
+            {#if dayEvents.length === 0}
+              <p class="text-muted-foreground text-xs">
+                No events scheduled
+              </p>
+            {:else}
+              {#each dayEvents as event}
+                <Card class="border-l-4 border-l-primary">
+                  <CardContent class="p-2">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="flex-1 min-w-0">
+                        <h4 class="font-medium text-sm">
+                          {event.title}
+                        </h4>
+                        <p class="text-xs text-muted-foreground mt-0.5">
+                          {formatEventTime(event)}
+                        </p>
+                        {#if event.location}
+                          <p class="text-xs text-muted-foreground mt-0.5">
+                            📍 {event.location}
+                          </p>
+                        {/if}
+                        {#if event.confidence && event.confidence < 70}
+                          <Badge variant="destructive" class="mt-1 text-xs">
+                            ⚠️ Low confidence
+                          </Badge>
+                        {/if}
+                      </div>
+                      
+                      <!-- Action buttons -->
+                      <div class="flex items-center gap-1 flex-shrink-0">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          class="h-6 w-6 text-muted-foreground hover:text-foreground"
+                          onclick={() => openEventEditor(event)}
+                          title="Edit event"
+                        >
+                          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                          </svg>
+                        </Button>
+                        
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          class="h-6 w-6 text-muted-foreground hover:text-destructive"
+                          onclick={() => deleteEvent(event.id)}
+                          disabled={deletingEventId === event.id}
+                          title="Delete event"
+                        >
+                          {#if deletingEventId === event.id}
+                            <div class="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
+                          {:else}
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                            </svg>
+                          {/if}
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              {/each}
+            {/if}
+          {/if}
+        </CardContent>
+      </Card>
     </div>
   </div>
 </div> 

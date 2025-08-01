@@ -1,19 +1,87 @@
 <script lang="ts">
   import { onMount, createEventDispatcher } from 'svelte';
   import { supabase } from '../supabase';
+  import { Card, CardContent } from '$lib/components/ui/card';
+  import { Button } from '$lib/components/ui/button';
+  import { Input } from '$lib/components/ui/input';
   
   const dispatch = createEventDispatcher();
   
-  let { user } = $props<{
+  let { user, editingEvent } = $props<{
     user: any;
+    editingEvent?: any;
   }>();
 
   let inputText = $state('');
   let loading = $state(false);
-  let conversation = $state<Array<{ role: string; content: string; timestamp: Date }>>([]);
+  let conversation = $state<Array<{
+    role: string;
+    content: string;
+    timestamp: Date;
+    eventData?: {
+      title: string;
+      startTime: string;
+      endTime?: string;
+      description?: string;
+      location?: string;
+      confidence: number;
+    };
+    eventsData?: Array<{
+      title: string;
+      startTime: string;
+      endTime?: string;
+      description?: string;
+      location?: string;
+      confidence: number;
+    }>;
+  }>>([]);
   let currentEventData = $state<any>(null);
+  let currentEventsData = $state<Array<any>>([]);
   let showPreview = $state(false);
   let isComplete = $state(false);
+  let isEditing = $state(false);
+
+  // Initialize editing mode and pre-fill data if editing an existing event
+  onMount(() => {
+    if (editingEvent) {
+      isEditing = true;
+      // Pre-fill the conversation with the existing event data
+      const eventStart = new Date(editingEvent.start_time);
+      const eventEnd = new Date(editingEvent.end_time);
+      
+      // Set current event data with existing event details
+      currentEventData = {
+        title: editingEvent.title,
+        startTime: editingEvent.start_time,
+        endTime: editingEvent.end_time,
+        location: editingEvent.location || '',
+        description: editingEvent.description || '',
+        confidence: editingEvent.confidence || 100
+      };
+      
+      // Create the first message with event details using the same format as when creating events
+      const eventData = {
+        title: editingEvent.title,
+        startTime: editingEvent.start_time,
+        endTime: editingEvent.end_time,
+        description: editingEvent.description || '',
+        location: editingEvent.location || '',
+        confidence: editingEvent.confidence || 100
+      };
+      
+      conversation = [
+        {
+          role: 'assistant',
+          content: `I'm helping you edit "${editingEvent.title}". What would you like to change?`,
+          timestamp: new Date(),
+          eventData
+        }
+      ];
+      
+      showPreview = true;
+      isComplete = true;
+    }
+  });
 
   // Get user's timezone and working hours
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -21,15 +89,6 @@
     start: '09:00',
     end: '17:00'
   };
-
-  const examples = [
-    "Meeting with John tomorrow at 2pm",
-    "Doctor appointment next Friday morning",
-    "Weekly team standup every Monday at 9am",
-    "Lunch with Sarah sometime next week",
-    "Coffee with client at 3pm today",
-    "Birthday party this Saturday evening"
-  ];
 
   async function handleSubmit(event: Event) {
     event.preventDefault();
@@ -47,27 +106,80 @@
     }];
 
     try {
-      if (conversation.length === 1) {
-        // First message - parse the event using edge function
-        const { data: functionData, error: functionError } = await supabase.functions.invoke(
-          'calendar-ai',
-          {
-            body: {
-              input: userMessage,
-              context: {
-                currentDate: new Date().toISOString(),
-                timezone: userTimezone,
-                workingHours
-              }
-            }
+      // Prepare conversation history with proper structure
+      const conversationHistory = conversation.slice(0, -1).map(msg => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp.toISOString()
+      }));
+
+      const functionParams = {
+        body: {
+          input: userMessage,
+          context: {
+            currentDate: new Date().toISOString(),
+            timezone: userTimezone,
+            workingHours,
+            conversation: conversationHistory,
+            eventData: currentEventData,
+            eventsData: currentEventsData,
+            isFollowUp: conversation.length > 1,
+            isEditing: isEditing,
+            editingEvent: editingEvent,
+            previousEvents: [...(currentEventData ? [currentEventData] : []), ...currentEventsData]
           }
-        );
-
-        if (functionError) {
-          console.error('Function error:', functionError);
-          throw functionError;
         }
+      };
 
+      const { data: functionData, error: functionError } = await supabase.functions.invoke(
+        'calendar-ai',
+        functionParams
+      );
+
+      if (functionError) {
+        console.error('Edge function error:', functionError);
+        throw new Error(`Failed to process request: ${functionError.message}`);
+      }
+
+      if (!functionData) {
+        throw new Error('No response from AI service');
+      }
+
+      // Handle multiple events
+      if (functionData.isMultipleEvents && functionData.events) {
+        currentEventsData = functionData.events.map((event: any) => ({
+          ...event,
+          user_id: user.id
+        }));
+        
+        if (functionData.questions && functionData.questions.length > 0) {
+          // AI has questions
+          conversation = [...conversation, {
+            role: 'assistant',
+            content: functionData.questions[0],
+            timestamp: new Date()
+          }];
+        } else if (functionData.confidence >= 70) {
+          // High confidence, show events in chat
+          isComplete = true;
+          
+          conversation = [...conversation, {
+            role: 'assistant',
+            content: functionData.chatResponse,
+            timestamp: new Date(),
+            eventsData: functionData.events
+          }];
+        } else {
+          // Lower confidence, ask for clarification
+          conversation = [...conversation, {
+            role: 'assistant',
+            content: functionData.chatResponse || 'I need more details to schedule these events.',
+            timestamp: new Date()
+          }];
+        }
+      } else {
+        // Handle single event (existing logic)
+        // Update current event data
         currentEventData = {
           ...functionData,
           user_id: user.id
@@ -80,66 +192,58 @@
             content: functionData.questions[0],
             timestamp: new Date()
           }];
-        } else if (functionData.confidence > 70) {
-          // High confidence, show preview
-          showPreview = true;
+        } else if (functionData.confidence >= 70) {
+          // High confidence, show event in chat
           isComplete = true;
+          
+          const eventData = {
+            title: functionData.title,
+            startTime: functionData.startTime,
+            endTime: functionData.endTime,
+            description: functionData.description,
+            location: functionData.location,
+            confidence: functionData.confidence
+          };
+
+          console.log('Event times received:', {
+            startTime: functionData.startTime,
+            endTime: functionData.endTime
+          });
+          
           conversation = [...conversation, {
             role: 'assistant',
-            content: 'Great! I\'ve extracted the event details. Please review and confirm.',
+            content: functionData.chatResponse,
+            timestamp: new Date(),
+            eventData
+          }];
+        } else {
+          // Lower confidence, ask for clarification
+          conversation = [...conversation, {
+            role: 'assistant',
+            content: functionData.chatResponse || 'I need more details to schedule this event.',
             timestamp: new Date()
           }];
         }
-      } else {
-        // Follow-up conversation
-        const { data: functionData, error: functionError } = await supabase.functions.invoke('calendar-ai', {
-          body: {
-            input: userMessage,
-            context: {
-              currentDate: new Date().toISOString(),
-              timezone: userTimezone,
-              workingHours,
-              conversation: conversation.slice(0, -1), // Exclude the current user message
-              eventData: currentEventData
-            }
-          },
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (functionError) throw functionError;
-
-        currentEventData = {
-          ...functionData,
-          user_id: user.id
-        };
-        isComplete = functionData.confidence > 70;
-          
-        if (isComplete) {
-          showPreview = true;
-        }
-          
-        conversation = [...conversation, {
-          role: 'assistant',
-          content: functionData.questions?.[0] || 'Great! I\'ve updated the event details. Please review and confirm.',
-          timestamp: new Date()
-        }];
       }
     } catch (error) {
       console.error('AI processing error:', error);
+      
       conversation = [...conversation, {
         role: 'assistant',
         content: 'I encountered an error processing your request. Please try again.',
         timestamp: new Date()
       }];
+
+      // Reset state on error
+      currentEventData = null;
+      isComplete = false;
     } finally {
       loading = false;
     }
   }
 
   async function confirmEvent() {
-    if (!currentEventData || !isComplete) return;
+    if ((!currentEventData && currentEventsData.length === 0) || !isComplete) return;
 
     loading = true;
     try {
@@ -163,43 +267,134 @@
           });
       }
 
-      // Now create the event
-      const { error } = await supabase
-        .from('events')
-        .insert([{
+      if (currentEventsData.length > 0) {
+        // Handle multiple events
+        const eventsToCreate = currentEventsData.map(event => ({
+          title: event.title,
+          start_time: event.startTime,
+          end_time: event.endTime,
+          description: event.description,
+          location: event.location,
+          user_id: user.id
+        }));
+
+        const { error } = await supabase
+          .from('events')
+          .insert(eventsToCreate);
+
+        if (error) throw error;
+
+        conversation = [...conversation, {
+          role: 'assistant',
+          content: `✅ Successfully created ${eventsToCreate.length} events! You can view them in your calendar.`,
+          timestamp: new Date()
+        }];
+
+        // Reset the form
+        resetForm();
+        
+        // Dispatch event to notify parent component (like Calendar) to refresh
+        dispatch('eventCreated', { events: eventsToCreate });
+        
+        // Navigate back to calendar view
+        dispatch('viewChange', { view: 'calendar' });
+      } else if (currentEventData) {
+        // Handle single event
+        const eventData = {
           title: currentEventData.title,
           start_time: currentEventData.startTime,
           end_time: currentEventData.endTime,
           description: currentEventData.description,
+          location: currentEventData.location,
           user_id: user.id
-        }]);
+        };
+
+        if (isEditing && editingEvent) {
+          // Update existing event
+          const { error } = await supabase
+            .from('events')
+            .update(eventData)
+            .eq('id', editingEvent.id)
+            .eq('user_id', user.id); // Ensure user can only edit their own events
+
+          if (error) throw error;
+
+          conversation = [...conversation, {
+            role: 'assistant',
+            content: '✅ Event updated successfully! You can view the changes in your calendar.',
+            timestamp: new Date()
+          }];
+        } else {
+          // Create new event
+          const { error } = await supabase
+            .from('events')
+            .insert([eventData]);
+
+          if (error) throw error;
+
+          conversation = [...conversation, {
+            role: 'assistant',
+            content: '✅ Event created successfully! You can view it in your calendar.',
+            timestamp: new Date()
+          }];
+        }
+
+        // Reset the form
+        resetForm();
+        
+        // Dispatch event to notify parent component (like Calendar) to refresh
+        dispatch('eventCreated', { event: eventData });
+        
+        // Navigate back to calendar view
+        dispatch('viewChange', { view: 'calendar' });
+      }
+      
+    } catch (error) {
+      console.error('Event save error:', error);
+      conversation = [...conversation, {
+        role: 'assistant',
+        content: `❌ Failed to ${isEditing ? 'update' : 'create'} event(s). Please try again.`,
+        timestamp: new Date()
+      }];
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function deleteEvent() {
+    if (!editingEvent || !isEditing) return;
+    
+    if (!confirm('Are you sure you want to delete this event?')) {
+      return;
+    }
+
+    loading = true;
+    try {
+      const { error } = await supabase
+        .from('events')
+        .delete()
+        .eq('id', editingEvent.id)
+        .eq('user_id', user.id); // Ensure user can only delete their own events
 
       if (error) throw error;
 
-      // Reset the form
-      resetForm();
-      
-      // Dispatch event to notify parent component (like Calendar) to refresh
-      dispatch('eventCreated', {
-        event: {
-          title: currentEventData.title,
-          start_time: currentEventData.startTime,
-          end_time: currentEventData.endTime,
-          description: currentEventData.description,
-          user_id: user.id
-        }
-      });
-      
       conversation = [...conversation, {
         role: 'assistant',
-        content: '✅ Event created successfully! You can view it in your calendar.',
+        content: '🗑️ Event deleted successfully!',
         timestamp: new Date()
       }];
+
+      // Dispatch event to notify parent component (like Calendar) to refresh
+      dispatch('eventDeleted', { eventId: editingEvent.id });
+      
+      // Navigate back to calendar view
+      dispatch('viewChange', { view: 'calendar' });
+      
     } catch (error) {
-      console.error('Event creation error:', error);
+      console.error('Event delete error:', error);
       conversation = [...conversation, {
         role: 'assistant',
-        content: '❌ Failed to create event. Please try again.',
+        content: '❌ Failed to delete event. Please try again.',
         timestamp: new Date()
       }];
     } finally {
@@ -209,10 +404,45 @@
 
   function resetForm() {
     inputText = '';
-    conversation = [];
-    currentEventData = null;
-    showPreview = false;
-    isComplete = false;
+    if (isEditing && editingEvent) {
+      // Reset to original event data
+      const eventData = {
+        title: editingEvent.title,
+        startTime: editingEvent.start_time,
+        endTime: editingEvent.end_time,
+        description: editingEvent.description || '',
+        location: editingEvent.location || '',
+        confidence: editingEvent.confidence || 100
+      };
+      
+      conversation = [
+        {
+          role: 'assistant',
+          content: `I'm helping you edit "${editingEvent.title}". What would you like to change?`,
+          timestamp: new Date(),
+          eventData
+        }
+      ];
+      
+      currentEventData = {
+        title: editingEvent.title,
+        startTime: editingEvent.start_time,
+        endTime: editingEvent.end_time,
+        location: editingEvent.location || '',
+        description: editingEvent.description || '',
+        confidence: editingEvent.confidence || 100
+      };
+      
+      showPreview = true;
+      isComplete = true;
+    } else {
+      // Complete reset for new events
+      conversation = [];
+      currentEventData = null;
+      currentEventsData = [];
+      showPreview = false;
+      isComplete = false;
+    }
   }
 
   function useExample(example: string) {
@@ -221,8 +451,12 @@
 
   function formatDateTime(dateString: string) {
     if (!dateString) return '';
+    
+    console.log('Formatting:', dateString);
     const date = new Date(dateString);
-    return date.toLocaleString('en-US', {
+    console.log('Date object:', date.toString());
+    
+    const result = date.toLocaleString('en-US', {
       weekday: 'long',
       month: 'long',
       day: 'numeric',
@@ -230,201 +464,196 @@
       minute: '2-digit',
       hour12: true
     });
+    
+    console.log('Formatted result:', result);
+    return result;
   }
 
   onMount(() => {
-    // Focus the input on mount
-    const input = document.querySelector('input[type="text"]') as HTMLInputElement;
-    if (input) input.focus();
+    setTimeout(() => {
+      const input = document.querySelector('input[type="text"]') as HTMLInputElement;
+      if (input) input.focus();
+    }, 100);
   });
 </script>
 
-<div class="max-w-4xl mx-auto">
-  <div class="text-center mb-8">
-    <h2 class="text-3xl font-bold text-slate-900 dark:text-white mb-4">
-      Create Event with AI
-    </h2>
-    <p class="text-lg text-slate-600 dark:text-slate-300">
-      Just describe your event naturally, and I'll help you schedule it.
-    </p>
-  </div>
-
-  <div class="grid lg:grid-cols-3 gap-8">
-    <!-- Main Chat Interface -->
-    <div class="lg:col-span-2">
-      <div class="glass rounded-2xl border border-white/20 overflow-hidden">
-        <!-- Chat Messages -->
-        <div class="h-96 overflow-y-auto p-6 space-y-4">
-          {#if conversation.length === 0}
-            <!-- Welcome message -->
-            <div class="flex items-start space-x-3">
-              <div class="w-8 h-8 bg-primary-500 rounded-full flex items-center justify-center">
-                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
-                </svg>
-              </div>
-              <div class="flex-1">
-                <div class="bg-primary-50 dark:bg-primary-900/20 rounded-2xl p-4">
-                  <p class="text-slate-900 dark:text-white">
-                    Hi! I'm your AI calendar assistant. Tell me about the event you'd like to schedule, and I'll help you create it. 
-                    You can describe it naturally - like "Meeting with John tomorrow at 2pm" or "Doctor appointment next Friday morning".
-                  </p>
-                </div>
-                <p class="text-xs text-slate-400 mt-1">AI Assistant</p>
-              </div>
-            </div>
-          {/if}
-
-          {#each conversation as message}
-            <div class="flex items-start space-x-3 {message.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}">
-              <div class="w-8 h-8 {message.role === 'user' ? 'bg-slate-600' : 'bg-primary-500'} rounded-full flex items-center justify-center">
-                {#if message.role === 'user'}
-                  <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-                  </svg>
-                {:else}
-                  <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
-                  </svg>
-                {/if}
-              </div>
-              <div class="flex-1">
-                <div class="bg-{message.role === 'user' ? 'slate-100 dark:bg-slate-700' : 'primary-50 dark:bg-primary-900/20'} rounded-2xl p-4">
-                  <p class="text-slate-900 dark:text-white">{message.content}</p>
-                </div>
-                <p class="text-xs text-slate-400 mt-1 {message.role === 'user' ? 'text-right' : ''}">
-                  {message.role === 'user' ? 'You' : 'AI Assistant'} • {message.timestamp.toLocaleTimeString()}
-                </p>
-              </div>
-            </div>
-          {/each}
-
-          {#if loading}
-            <div class="flex items-start space-x-3">
-              <div class="w-8 h-8 bg-primary-500 rounded-full flex items-center justify-center">
-                <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              </div>
-              <div class="flex-1">
-                <div class="bg-primary-50 dark:bg-primary-900/20 rounded-2xl p-4">
-                  <p class="text-slate-600 dark:text-slate-300">Thinking...</p>
+<div class="space-y-6 px-2 pt-6">
+  <div class="max-w-4xl mx-auto">
+    <div class="relative">
+      <Button
+        variant="ghost"
+        size="icon"
+        class="absolute -right-2 -top-2 rounded-full z-10"
+        onclick={() => dispatch('viewChange', { view: 'calendar' })}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+          <path d="M18 6 6 18"></path>
+          <path d="m6 6 12 12"></path>
+        </svg>
+      </Button>
+      <Card class="h-[calc(100vh-12rem)] flex flex-col">
+        <CardContent class="flex-1 p-0 flex flex-col overflow-hidden">
+          <!-- Chat Messages -->
+          <div class="flex-1 overflow-y-auto p-4 space-y-4">
+            {#if conversation.length === 0}
+              <div class="flex items-start space-x-3">
+                <div class="flex-1">
+                  <div class="bg-muted rounded-xl p-4">
+                    <p class="text-foreground">
+                      {isEditing ? `I'm helping you edit "${editingEvent?.title}". What would you like to change?` : "Tell me about the event you'd like to schedule."}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          {/if}
-        </div>
+            {/if}
 
-        <!-- Input Area -->
-        <div class="p-6 border-t border-white/10">
-          <form onsubmit={handleSubmit} class="flex space-x-3">
-            <input
-              bind:value={inputText}
-              type="text"
-              placeholder="Describe your event... (e.g., Meeting with John tomorrow at 2pm)"
-              class="flex-1 px-4 py-3 bg-white/50 dark:bg-slate-800/50 border border-white/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent placeholder-slate-400"
-              disabled={loading}
-            />
-            <button
-              type="submit"
-              disabled={!inputText.trim() || loading}
-              class="px-6 py-3 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-colors"
-            >
-              Send
-            </button>
-          </form>
-        </div>
-      </div>
+            {#each conversation as message, index}
+              <div class="flex items-start space-x-3 {message.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}">
+                <div class="w-8 h-8 {message.role === 'user' ? 'bg-muted' : 'bg-primary'} rounded-full flex-shrink-0 flex items-center justify-center">
+                  {#if message.role === 'user'}
+                    <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                    </svg>
+                  {:else}
+                    <svg class="w-4 h-4 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                    </svg>
+                  {/if}
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="bg-{message.role === 'user' ? 'muted' : 'muted'} rounded-xl p-4 break-words">
+                    <p class="text-foreground">{message.content}</p>
+                    
+                    {#if message.role === 'assistant' && message.eventData && message.eventData.confidence >= 70}
+                      <div class="mt-4 border-t pt-4">
+                        <div class="space-y-2">
+                          <p class="font-medium">{message.eventData.title}</p>
+                          <p class="text-sm text-muted-foreground">
+                            {formatDateTime(message.eventData.startTime)}
+                            {#if message.eventData.endTime}
+                              - {formatDateTime(message.eventData.endTime)}
+                            {/if}
+                          </p>
+                          {#if message.eventData.location}
+                            <p class="text-sm">📍 {message.eventData.location}</p>
+                          {/if}
+                          {#if message.eventData.description}
+                            <p class="text-sm text-muted-foreground">{message.eventData.description}</p>
+                          {/if}
+                        </div>
+                        {#if !(isEditing && index === 0)}
+                          <div class="mt-4 flex space-x-2">
+                            <Button
+                              size="sm"
+                              onclick={() => confirmEvent()}
+                              disabled={loading}
+                            >
+                              {isEditing ? 'Update Event' : 'Create Event'}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onclick={() => resetForm()}
+                            >
+                              Start Over
+                            </Button>
+                          </div>
+                        {/if}
+                        {#if isEditing && index === 0}
+                          <div class="mt-4 flex space-x-2">
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onclick={() => deleteEvent()}
+                              disabled={loading}
+                            >
+                              Delete Event
+                            </Button>
+                          </div>
+                        {/if}
+                      </div>
+                    {/if}
+                    
+                    {#if message.role === 'assistant' && message.eventsData && message.eventsData.length > 0}
+                      <div class="mt-4 border-t pt-4">
+                        <div class="space-y-4">
+                          {#each message.eventsData as event, eventIndex}
+                            <div class="border rounded-lg p-3 bg-background">
+                              <div class="space-y-2">
+                                <p class="font-medium">{event.title}</p>
+                                <p class="text-sm text-muted-foreground">
+                                  {formatDateTime(event.startTime)}
+                                  {#if event.endTime}
+                                    - {formatDateTime(event.endTime)}
+                                  {/if}
+                                </p>
+                                {#if event.location}
+                                  <p class="text-sm">📍 {event.location}</p>
+                                {/if}
+                                {#if event.description}
+                                  <p class="text-sm text-muted-foreground">{event.description}</p>
+                                {/if}
+                              </div>
+                            </div>
+                          {/each}
+                        </div>
+                        <div class="mt-4 flex space-x-2">
+                          <Button
+                            size="sm"
+                            onclick={() => confirmEvent()}
+                            disabled={loading}
+                          >
+                            Create All Events
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onclick={() => resetForm()}
+                          >
+                            Start Over
+                          </Button>
+                        </div>
+                      </div>
+                    {/if}
+                  </div>
+                </div>
+              </div>
+            {/each}
 
-      {#if showPreview && currentEventData}
-        <!-- Event Preview -->
-        <div class="mt-6 glass rounded-2xl p-6 border border-white/20">
-          <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-4">Event Preview</h3>
-          
-          <div class="space-y-3">
-            <div>
-              <label class="text-sm font-medium text-slate-600 dark:text-slate-300">Title</label>
-              <p class="text-slate-900 dark:text-white">{currentEventData.title || 'Untitled Event'}</p>
-            </div>
-            
-            {#if currentEventData.startTime}
-              <div>
-                <label class="text-sm font-medium text-slate-600 dark:text-slate-300">Start Time</label>
-                <p class="text-slate-900 dark:text-white">{formatDateTime(currentEventData.startTime)}</p>
-              </div>
-            {/if}
-            
-            {#if currentEventData.endTime}
-              <div>
-                <label class="text-sm font-medium text-slate-600 dark:text-slate-300">End Time</label>
-                <p class="text-slate-900 dark:text-white">{formatDateTime(currentEventData.endTime)}</p>
-              </div>
-            {/if}
-            
-            {#if currentEventData.location}
-              <div>
-                <label class="text-sm font-medium text-slate-600 dark:text-slate-300">Location</label>
-                <p class="text-slate-900 dark:text-white">{currentEventData.location}</p>
-              </div>
-            {/if}
-            
-            {#if currentEventData.description}
-              <div>
-                <label class="text-sm font-medium text-slate-600 dark:text-slate-300">Description</label>
-                <p class="text-slate-900 dark:text-white">{currentEventData.description}</p>
-              </div>
-            {/if}
-            
-            {#if currentEventData.confidence}
-              <div>
-                <label class="text-sm font-medium text-slate-600 dark:text-slate-300">AI Confidence</label>
-                <p class="text-slate-900 dark:text-white">{currentEventData.confidence}%</p>
+            {#if loading}
+              <div class="flex items-start space-x-3">
+                <div class="w-8 h-8 bg-primary rounded-full flex-shrink-0 flex items-center justify-center">
+                  <div class="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></div>
+                </div>
+                <div class="flex-1">
+                  <div class="bg-muted rounded-xl p-4">
+                    <p class="text-muted-foreground">Thinking...</p>
+                  </div>
+                </div>
               </div>
             {/if}
           </div>
-          
-          <div class="flex space-x-3 mt-6">
-            <button
-              onclick={confirmEvent}
-              disabled={loading}
-              class="flex-1 px-4 py-2 bg-success-600 hover:bg-success-700 disabled:bg-slate-300 text-white rounded-lg font-medium transition-colors"
-            >
-              Create Event
-            </button>
-            <button
-              onclick={resetForm}
-              class="px-4 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg font-medium transition-colors"
-            >
-              Start Over
-            </button>
-          </div>
-        </div>
-      {/if}
-    </div>
 
-    <!-- Examples Sidebar -->
-    <div class="lg:col-span-1">
-      <div class="glass rounded-2xl p-6 border border-white/20">
-        <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-4">Try These Examples</h3>
-        <div class="space-y-3">
-          {#each examples as example}
-            <button
-              onclick={() => useExample(example)}
-              class="w-full text-left p-3 bg-white/30 dark:bg-slate-800/30 hover:bg-white/50 dark:hover:bg-slate-800/50 rounded-lg transition-colors text-sm text-slate-700 dark:text-slate-200"
-            >
-              "{example}"
-            </button>
-          {/each}
-        </div>
-        
-        <div class="mt-6 pt-6 border-t border-white/10">
-          <h4 class="text-sm font-medium text-slate-600 dark:text-slate-300 mb-3">Tips</h4>
-          <ul class="text-xs text-slate-500 dark:text-slate-400 space-y-2">
-            <li>• Be as specific as possible about dates and times</li>
-            <li>• Mention locations if relevant</li>
-            <li>• Include recurring patterns like "every Monday"</li>
-            <li>• Use natural language - I understand context!</li>
-          </ul>
-        </div>
-      </div>
+          <!-- Input Area -->
+          <div class="p-4 border-t bg-background">
+            <form onsubmit={handleSubmit} class="flex space-x-3">
+              <Input
+                bind:value={inputText}
+                type="text"
+                placeholder="Describe your event..."
+                disabled={loading}
+                class="flex-1"
+              />
+              <Button
+                type="submit"
+                disabled={!inputText.trim() || loading}
+              >
+                Send
+              </Button>
+            </form>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   </div>
 </div> 
