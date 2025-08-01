@@ -15,7 +15,9 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx src/lib/db/seed.ts",
     "db:generate": "drizzle-kit generate",
-    "db:push": "drizzle-kit push:pg"
+    "db:push": "drizzle-kit push:pg",
+    "setup:rls": "tsx scripts/setup-rls.ts",
+    "setup:rls-simple": "tsx scripts/setup-rls-simple.ts"
   },
   "devDependencies": {
     "@internationalized/date": "^3.8.2",

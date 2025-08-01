@@ -181,11 +181,16 @@
       const { data, error } = await supabase
         .from('events')
         .select('*')
-        .eq('user_id', user.id)
-        .or(`start_time.lte.${viewEnd.toISOString()},end_time.gte.${viewStart.toISOString()}`);
+        .eq('user_id', user.id);
 
       if (error) throw error;
-      events = data || [];
+      
+      // Filter events that overlap with the view period
+      events = (data || []).filter(event => {
+        const eventStart = new Date(event.start_time);
+        const eventEnd = new Date(event.end_time);
+        return eventStart <= viewEnd && eventEnd >= viewStart;
+      });
       console.log('Calendar loaded events:', events.length, events);
       console.log('Sample event structure:', events[0]);
       console.log('Extended view period:', viewStart.toISOString(), 'to', viewEnd.toISOString());
@@ -198,6 +203,7 @@
       }
     } catch (error) {
       console.error('Failed to load events:', error);
+      events = []; // Reset events on error
     } finally {
       loading = false;
     }

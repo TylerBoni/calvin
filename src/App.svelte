@@ -59,6 +59,11 @@
     } else {
       editingEvent = null;
     }
+    
+    // Force calendar refresh when returning to calendar view
+    if (event.detail.view === 'calendar') {
+      calendarKey += 1; // Force calendar component to re-mount and refresh
+    }
   }
 
   function handleEventCreated() {
