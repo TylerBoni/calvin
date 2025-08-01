@@ -19,7 +19,6 @@ export default defineConfig({
         manualChunks: {
           vendor: ['svelte'],
           ai: ['openai'],
-          auth: ['@auth/sveltekit', 'lucia']
         }
       }
     }
