@@ -16,12 +16,25 @@
 
     try {
       const authFn = isSignUp ? signUp : signIn;
-      const { user } = await authFn(email, password);
-      if (user) {
-        onSuccess(user);
+      
+      // Add timeout protection
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Authentication timeout')), 15000); // 15 second timeout
+      });
+      
+      const authPromise = authFn(email, password);
+      
+      const result = await Promise.race([authPromise, timeoutPromise]);
+      
+      if (result.user) {
+        onSuccess(result.user);
       }
     } catch (e: any) {
-      error = e.message || 'An error occurred during authentication';
+      if (e.message === 'Authentication timeout') {
+        error = 'Authentication is taking longer than expected. Please try again.';
+      } else {
+        error = e.message || 'An error occurred during authentication';
+      }
     } finally {
       loading = false;
     }

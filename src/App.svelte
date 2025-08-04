@@ -77,27 +77,31 @@
       isAuthenticated = !!session;
       user = session?.user || null;
       
-      // Sync user to local database if they exist
+      // Sync user to local database if they exist - defer to prevent deadlock
       if (session?.user) {
-        try {
-          await ensureUserInLocalDB(session.user);
-        } catch (error) {
-          console.error('Failed to sync user on mount:', error);
-        }
-      }
-
-      // Listen for auth changes
-      supabase.auth.onAuthStateChange(async (event, session) => {
-        isAuthenticated = !!session;
-        user = session?.user || null;
-        
-        // Sync user to local database when they sign in
-        if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+        setTimeout(async () => {
           try {
             await ensureUserInLocalDB(session.user);
           } catch (error) {
-            console.error('Failed to sync user on auth change:', error);
+            console.error('Failed to sync user on mount:', error);
           }
+        }, 0);
+      }
+
+      // Listen for auth changes
+      supabase.auth.onAuthStateChange((event, session) => {
+        isAuthenticated = !!session;
+        user = session?.user || null;
+        
+        // Sync user to local database when they sign in - defer to prevent deadlock
+        if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+          setTimeout(async () => {
+            try {
+              await ensureUserInLocalDB(session.user);
+            } catch (error) {
+              console.error('Failed to sync user on auth change:', error);
+            }
+          }, 0);
         }
       });
     } catch (error) {
