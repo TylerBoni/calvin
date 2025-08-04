@@ -14,10 +14,64 @@
   let user = $state<User | null>(null);
   let calendarKey = $state(0); // Key to force calendar refresh
   let editingEvent = $state<any>(null); // Store event data for editing
+  let urlParams = $state<URLSearchParams>(new URLSearchParams());
+
+  // Router functions
+  function navigateTo(path: string, replace = false) {
+    const url = new URL(window.location.href);
+    url.pathname = path;
+    
+    if (replace) {
+      window.history.replaceState({}, '', url.toString());
+    } else {
+      window.history.pushState({}, '', url.toString());
+    }
+    
+    updateRoute();
+  }
+
+  function updateRoute() {
+    const path = window.location.pathname;
+    const params = new URLSearchParams(window.location.search);
+    urlParams = params;
+    
+    // Extract view from path
+    if (path === '/' || path === '/calendar') {
+      currentView = 'calendar';
+    } else if (path === '/create') {
+      currentView = 'create';
+    } else if (path === '/edit') {
+      currentView = 'edit';
+      // Extract event data from URL params if available
+      const eventData = params.get('event');
+      if (eventData) {
+        try {
+          editingEvent = JSON.parse(decodeURIComponent(eventData));
+        } catch (e) {
+          console.error('Failed to parse event data from URL:', e);
+          editingEvent = null;
+        }
+      }
+    } else if (path === '/settings') {
+      currentView = 'settings';
+    } else {
+      // Handle unknown routes - redirect to calendar
+      navigateTo('/calendar', true);
+    }
+  }
+
+  // Handle browser back/forward buttons
+  function handlePopState() {
+    updateRoute();
+  }
 
   // Check authentication status on mount and setup auth listener
   onMount(async () => {
     try {
+      // Set up routing
+      updateRoute();
+      window.addEventListener('popstate', handlePopState);
+      
       // Get initial session
       const session = await getSession();
       isAuthenticated = !!session;
@@ -52,23 +106,33 @@
   });
 
   function handleViewChange(event: CustomEvent<{ view: string; event?: any }>) {
-    currentView = event.detail.view;
+    const { view, event: eventData } = event.detail;
+    
     // Store event data if we're switching to edit view
-    if (event.detail.view === 'edit' && event.detail.event) {
-      editingEvent = event.detail.event;
+    if (view === 'edit' && eventData) {
+      editingEvent = eventData;
+      // Navigate to edit route with event data
+      const eventParam = encodeURIComponent(JSON.stringify(eventData));
+      navigateTo(`/edit?event=${eventParam}`);
     } else {
       editingEvent = null;
-    }
-    
-    // Force calendar refresh when returning to calendar view
-    if (event.detail.view === 'calendar') {
-      calendarKey += 1; // Force calendar component to re-mount and refresh
+      
+      // Navigate to appropriate route
+      if (view === 'calendar') {
+        navigateTo('/calendar');
+        // Force calendar refresh when returning to calendar view
+        calendarKey += 1;
+      } else if (view === 'create') {
+        navigateTo('/create');
+      } else if (view === 'settings') {
+        navigateTo('/settings');
+      }
     }
   }
 
   function handleEventCreated() {
     // Switch back to calendar view and force refresh
-    currentView = 'calendar';
+    navigateTo('/calendar');
     calendarKey += 1; // Force calendar component to re-mount and refresh
   }
 
@@ -81,6 +145,8 @@
       await signOut();
       isAuthenticated = false;
       user = null;
+      // Redirect to home after logout
+      navigateTo('/', true);
     } catch (error) {
       console.error('Failed to log out:', error);
     }
@@ -94,6 +160,8 @@
     isAuthenticated = true;
     user = userData;
     showAuthModal = false;
+    // Redirect to calendar after successful login
+    navigateTo('/calendar');
   }
 </script>
 

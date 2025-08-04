@@ -40,6 +40,13 @@
   let showPreview = $state(false);
   let isComplete = $state(false);
   let isEditing = $state(false);
+  let retryCount = $state(0);
+  let timeoutId = $state<any>(null);
+  let lastUserMessage = $state('');
+
+  // Constants for timeout and retry
+  const TIMEOUT_DURATION = 30000; // 30 seconds
+  const MAX_RETRIES = 2;
 
   // Initialize editing mode and pre-fill data if editing an existing event
   onMount(() => {
@@ -97,6 +104,7 @@
     const userMessage = inputText.trim();
     inputText = '';
     loading = true;
+    lastUserMessage = userMessage;
 
     // Add user message to conversation
     conversation = [...conversation, {
@@ -105,140 +113,202 @@
       timestamp: new Date()
     }];
 
+    // Set timeout
+    timeoutId = setTimeout(() => {
+      if (loading) {
+        handleTimeout();
+      }
+    }, TIMEOUT_DURATION);
+
     try {
-      // Prepare conversation history with proper structure
-      const conversationHistory = conversation.slice(0, -1).map(msg => ({
-        role: msg.role,
-        content: msg.content,
-        timestamp: msg.timestamp.toISOString()
-      }));
-
-      const functionParams = {
-        body: {
-          input: userMessage,
-          context: {
-            currentDate: new Date().toISOString(),
-            timezone: userTimezone,
-            workingHours,
-            conversation: conversationHistory,
-            eventData: currentEventData,
-            eventsData: currentEventsData,
-            isFollowUp: conversation.length > 1,
-            isEditing: isEditing,
-            editingEvent: editingEvent,
-            previousEvents: [...(currentEventData ? [currentEventData] : []), ...currentEventsData]
-          }
-        }
-      };
-
-      const { data: functionData, error: functionError } = await supabase.functions.invoke(
-        'calendar-ai',
-        functionParams
-      );
-
-      if (functionError) {
-        console.error('Edge function error:', functionError);
-        throw new Error(`Failed to process request: ${functionError.message}`);
-      }
-
-      if (!functionData) {
-        throw new Error('No response from AI service');
-      }
-
-      // Handle multiple events
-      if (functionData.isMultipleEvents && functionData.events) {
-        currentEventsData = functionData.events.map((event: any) => ({
-          ...event,
-          user_id: user.id
-        }));
-        
-        if (functionData.questions && functionData.questions.length > 0) {
-          // AI has questions
-          conversation = [...conversation, {
-            role: 'assistant',
-            content: functionData.questions[0],
-            timestamp: new Date()
-          }];
-        } else if (functionData.confidence >= 70) {
-          // High confidence, show events in chat
-          isComplete = true;
-          
-          conversation = [...conversation, {
-            role: 'assistant',
-            content: functionData.chatResponse,
-            timestamp: new Date(),
-            eventsData: functionData.events
-          }];
-        } else {
-          // Lower confidence, ask for clarification
-          conversation = [...conversation, {
-            role: 'assistant',
-            content: functionData.chatResponse || 'I need more details to schedule these events.',
-            timestamp: new Date()
-          }];
-        }
-      } else {
-        // Handle single event (existing logic)
-        // Update current event data
-        currentEventData = {
-          ...functionData,
-          user_id: user.id
-        };
-          
-        if (functionData.questions && functionData.questions.length > 0) {
-          // AI has questions
-          conversation = [...conversation, {
-            role: 'assistant',
-            content: functionData.questions[0],
-            timestamp: new Date()
-          }];
-        } else if (functionData.confidence >= 70) {
-          // High confidence, show event in chat
-          isComplete = true;
-          
-          const eventData = {
-            title: functionData.title,
-            startTime: functionData.startTime,
-            endTime: functionData.endTime,
-            description: functionData.description,
-            location: functionData.location,
-            confidence: functionData.confidence
-          };
-
-          console.log('Event times received:', {
-            startTime: functionData.startTime,
-            endTime: functionData.endTime
-          });
-          
-          conversation = [...conversation, {
-            role: 'assistant',
-            content: functionData.chatResponse,
-            timestamp: new Date(),
-            eventData
-          }];
-        } else {
-          // Lower confidence, ask for clarification
-          conversation = [...conversation, {
-            role: 'assistant',
-            content: functionData.chatResponse || 'I need more details to schedule this event.',
-            timestamp: new Date()
-          }];
-        }
-      }
+      await processAIRequest(userMessage);
     } catch (error) {
       console.error('AI processing error:', error);
       
-      conversation = [...conversation, {
-        role: 'assistant',
-        content: 'I encountered an error processing your request. Please try again.',
-        timestamp: new Date()
-      }];
-
-      // Reset state on error
-      currentEventData = null;
-      isComplete = false;
+      if (retryCount < MAX_RETRIES) {
+        retryCount++;
+        conversation = [...conversation, {
+          role: 'assistant',
+          content: `I'm having trouble processing your request. Retrying... (attempt ${retryCount}/${MAX_RETRIES})`,
+          timestamp: new Date()
+        }];
+        
+        // Retry after a short delay
+        setTimeout(async () => {
+          try {
+            await processAIRequest(lastUserMessage);
+          } catch (retryError) {
+            handleError(retryError);
+          }
+        }, 2000);
+      } else {
+        handleError(error);
+      }
     } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
       loading = false;
+      retryCount = 0;
+    }
+  }
+
+  async function processAIRequest(userMessage: string) {
+    // Prepare conversation history with proper structure
+    const conversationHistory = conversation.slice(0, -1).map(msg => ({
+      role: msg.role,
+      content: msg.content,
+      timestamp: msg.timestamp.toISOString()
+    }));
+
+    const functionParams = {
+      body: {
+        input: userMessage,
+        context: {
+          currentDate: new Date().toISOString(),
+          timezone: userTimezone,
+          workingHours,
+          conversation: conversationHistory,
+          eventData: currentEventData,
+          eventsData: currentEventsData,
+          isFollowUp: conversation.length > 1,
+          isEditing: isEditing,
+          editingEvent: editingEvent,
+          previousEvents: [...(currentEventData ? [currentEventData] : []), ...currentEventsData]
+        }
+      }
+    };
+
+    const { data: functionData, error: functionError } = await supabase.functions.invoke(
+      'calendar-ai',
+      functionParams
+    );
+
+    if (functionError) {
+      console.error('Edge function error:', functionError);
+      throw new Error(`Failed to process request: ${functionError.message}`);
+    }
+
+    if (!functionData) {
+      throw new Error('No response from AI service');
+    }
+
+    // Handle multiple events
+    if (functionData.isMultipleEvents && functionData.events) {
+      currentEventsData = functionData.events.map((event: any) => ({
+        ...event,
+        user_id: user.id
+      }));
+      
+      if (functionData.questions && functionData.questions.length > 0) {
+        // AI has questions
+        conversation = [...conversation, {
+          role: 'assistant',
+          content: functionData.questions[0],
+          timestamp: new Date()
+        }];
+      } else if (functionData.confidence >= 70) {
+        // High confidence, show events in chat
+        isComplete = true;
+        
+        conversation = [...conversation, {
+          role: 'assistant',
+          content: functionData.chatResponse,
+          timestamp: new Date(),
+          eventsData: functionData.events
+        }];
+      } else {
+        // Lower confidence, ask for clarification
+        conversation = [...conversation, {
+          role: 'assistant',
+          content: functionData.chatResponse || 'I need more details to schedule these events.',
+          timestamp: new Date()
+        }];
+      }
+    } else {
+      // Handle single event (existing logic)
+      // Update current event data
+      currentEventData = {
+        ...functionData,
+        user_id: user.id
+      };
+        
+      if (functionData.questions && functionData.questions.length > 0) {
+        // AI has questions
+        conversation = [...conversation, {
+          role: 'assistant',
+          content: functionData.questions[0],
+          timestamp: new Date()
+        }];
+      } else if (functionData.confidence >= 70) {
+        // High confidence, show event in chat
+        isComplete = true;
+        
+        const eventData = {
+          title: functionData.title,
+          startTime: functionData.startTime,
+          endTime: functionData.endTime,
+          description: functionData.description,
+          location: functionData.location,
+          confidence: functionData.confidence
+        };
+
+        console.log('Event times received:', {
+          startTime: functionData.startTime,
+          endTime: functionData.endTime
+        });
+        
+        conversation = [...conversation, {
+          role: 'assistant',
+          content: functionData.chatResponse,
+          timestamp: new Date(),
+          eventData
+        }];
+      } else {
+        // Lower confidence, ask for clarification
+        conversation = [...conversation, {
+          role: 'assistant',
+          content: functionData.chatResponse || 'I need more details to schedule this event.',
+          timestamp: new Date()
+        }];
+      }
+    }
+  }
+
+  function handleTimeout() {
+    loading = false;
+    retryCount = 0;
+    
+    conversation = [...conversation, {
+      role: 'assistant',
+      content: 'I\'m taking longer than expected to process your request. You can try again or rephrase your message.',
+      timestamp: new Date()
+    }];
+
+    // Reset state on timeout
+    currentEventData = null;
+    isComplete = false;
+  }
+
+  function handleError(error: any) {
+    console.error('AI processing error:', error);
+    
+    conversation = [...conversation, {
+      role: 'assistant',
+      content: 'I encountered an error processing your request. Please try again or rephrase your message.',
+      timestamp: new Date()
+    }];
+
+    // Reset state on error
+    currentEventData = null;
+    isComplete = false;
+  }
+
+  function retryLastRequest() {
+    if (lastUserMessage && !loading) {
+      inputText = lastUserMessage;
+      handleSubmit(new Event('submit'));
     }
   }
 
@@ -474,7 +544,33 @@
       const input = document.querySelector('input[type="text"]') as HTMLInputElement;
       if (input) input.focus();
     }, 100);
+
+    // Handle URL parameters for Siri integration
+    handleURLParameters();
+
+    // Return cleanup function
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
   });
+
+  function handleURLParameters() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const eventText = urlParams.get('event');
+    
+    if (eventText) {
+      // Pre-fill the input with the event text from Siri
+      inputText = decodeURIComponent(eventText);
+      
+      // Automatically submit after a short delay
+      setTimeout(() => {
+        handleSubmit(new Event('submit'));
+      }, 500);
+    }
+  }
 </script>
 
 <div class="space-y-6 px-2 pt-6">
@@ -628,6 +724,31 @@
                 <div class="flex-1">
                   <div class="bg-muted rounded-xl p-4">
                     <p class="text-muted-foreground">Thinking...</p>
+                  </div>
+                </div>
+              </div>
+            {/if}
+
+            {#if !loading && lastUserMessage && conversation.length > 0 && conversation[conversation.length - 1] && conversation[conversation.length - 1].role === 'assistant' && (conversation[conversation.length - 1].content.includes('error') || conversation[conversation.length - 1].content.includes('longer than expected'))}
+              <div class="flex items-start space-x-3">
+                <div class="w-8 h-8 bg-muted rounded-full flex-shrink-0 flex items-center justify-center">
+                  <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                  </svg>
+                </div>
+                <div class="flex-1">
+                  <div class="bg-muted rounded-xl p-4">
+                    <div class="flex items-center justify-between">
+                      <p class="text-muted-foreground">Having trouble? You can retry your last request.</p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onclick={() => retryLastRequest()}
+                        disabled={loading}
+                      >
+                        Retry
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
