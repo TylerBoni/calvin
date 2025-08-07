@@ -350,7 +350,7 @@
   });
 </script>
 
-<div class="space-y-6 px-2 pt-6">
+<div class="space-y-4 px-2 sm:px-4 pt-4 sm:pt-6">
   <!-- Month Navigation and Add Button -->
   <div class="flex items-center justify-between">
     <div class="flex items-center gap-2">
@@ -359,7 +359,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
         </svg>
       </Button>
-      <span class="text-lg font-medium text-foreground">{formatMonth(currentDate)}</span>
+      <span class="text-lg sm:text-xl font-semibold text-foreground">{formatMonth(currentDate)}</span>
       <Button variant="ghost" size="icon" onclick={nextMonth} class="h-8 w-8">
         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
@@ -376,11 +376,11 @@
 
   </div>
 
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
     <!-- Calendar Grid -->
-    <div class="lg:col-span-2">
+    <div class="xl:col-span-2">
       <Card>
-        <CardHeader class="pb-2">
+        <CardHeader class="pb-2 px-3 sm:px-4">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <span class="text-xs text-muted-foreground">Weekends</span>
@@ -392,51 +392,58 @@
             </div>
           </div>
         </CardHeader>
-        <CardContent class="p-2">
+        <CardContent class="p-2 sm:p-3">
           {#if loading}
             <div class="flex items-center justify-center h-64">
               <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
             </div>
           {:else}
             <!-- Week headers -->
-            <div class="grid mb-1 {showWeekends ? 'grid-cols-7' : 'grid-cols-5'}">
+            <div class="grid mb-2 {showWeekends ? 'grid-cols-7' : 'grid-cols-5'}">
               {#each weekDays as day, index}
-                <div class="p-1 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                <div class="p-1 text-center text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wider">
                   {day}
                 </div>
               {/each}
             </div>
             
             <!-- Calendar days -->
-            <div class="grid gap-0.5 {showWeekends ? 'grid-cols-7' : 'grid-cols-5'}">
+            <div class="grid gap-1 {showWeekends ? 'grid-cols-7' : 'grid-cols-5'}">
               {#each getCalendarDays() as day, index}
                 <Button
                   variant="ghost"
-                  class="h-12 flex flex-col items-start justify-start p-1 rounded-none
-                         {day.isCurrentMonth ? '' : 'text-muted-foreground'}
-                         {day.isSelected ? 'bg-accent text-accent-foreground' : ''}
-                         {day.isToday ? 'bg-primary/20 text-primary ring-1 ring-primary' : ''}
-                         hover:bg-accent/50"
+                  class="h-20 sm:h-24 md:h-28 flex flex-col items-start justify-start p-1.5 sm:p-2 rounded-md border border-transparent
+                         {day.isCurrentMonth ? '' : 'text-muted-foreground opacity-50'}
+                         {day.isSelected ? 'bg-accent text-accent-foreground border-accent' : ''}
+                         {day.isToday ? 'bg-primary/10 text-primary ring-2 ring-primary/50' : ''}
+                         hover:bg-accent/50 hover:border-accent/50 transition-colors"
                   onclick={() => selectDate(day)}
                 >
-                  <span class="text-xs font-medium leading-none">
+                  <span class="text-sm sm:text-base font-semibold leading-none mb-1">
                     {day.day}
                   </span>
                   
                   <!-- Event indicators -->
-                  <div class="flex-1 w-full space-y-0.5 mt-0.5">
+                  <div class="flex-1 w-full space-y-1 overflow-hidden">
                     {#each day.events.slice(0, 3).sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()) as event, eventIndex}
                       {@const eventInfo = getEventDisplayInfo(event, day.date)}
-                      <div class="flex items-center gap-1">
-                        <div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
-                        <span class="text-xs truncate text-muted-foreground">
-                          {eventInfo.title}
+                      <div class="flex items-center gap-1 group cursor-pointer hover:bg-primary/10 rounded px-0.5" 
+                           onclick={(e) => { e.stopPropagation(); openEventEditor(event); }}>
+                        <div class="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0"></div>
+                        <span class="text-xs sm:text-sm truncate text-foreground/80 group-hover:text-foreground font-medium">
+                          {#if event.is_all_day}
+                            <span class="text-muted-foreground">All day:</span>
+                          {:else}
+                            {@const startTime = new Date(event.start_time)}
+                            <span class="text-muted-foreground">{startTime.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true })}</span>
+                          {/if}
+                          {' '}{eventInfo.title}
                         </span>
                       </div>
                     {/each}
                     
                     {#if day.events.length > 3}
-                      <div class="text-xs text-muted-foreground">
+                      <div class="text-xs sm:text-sm text-primary font-medium pl-2.5">
                         +{day.events.length - 3} more
                       </div>
                     {/if}
@@ -451,17 +458,17 @@
 
     <!-- Selected Day Events -->
     <div>
-      <Card>
-        <CardHeader class="pb-2">
-          <CardTitle class="text-base">
+      <Card class="h-full">
+        <CardHeader class="pb-3">
+          <CardTitle class="text-lg sm:text-xl">
             {selectedDate.toLocaleDateString('en-US', { 
-              weekday: 'short',
+              weekday: 'long',
               month: 'short',
               day: 'numeric'
             })}
           </CardTitle>
         </CardHeader>
-        <CardContent class="space-y-2 p-3">
+        <CardContent class="space-y-3 p-3 sm:p-4">
           {#if selectedDate}
             {@const dayEvents = events.filter(event => {
               const eventStart = new Date(event.start_time);
@@ -473,28 +480,28 @@
             }).sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())}
             
             {#if dayEvents.length === 0}
-              <p class="text-muted-foreground text-xs">
+              <p class="text-muted-foreground text-sm">
                 No events scheduled
               </p>
             {:else}
               {#each dayEvents as event}
-                <Card class="border-l-4 border-l-primary">
-                  <CardContent class="p-2">
+                <Card class="border-l-4 border-l-primary hover:shadow-md transition-shadow">
+                  <CardContent class="p-3">
                     <div class="flex items-start justify-between gap-2">
                       <div class="flex-1 min-w-0">
-                        <h4 class="font-medium text-sm">
+                        <h4 class="font-semibold text-sm sm:text-base">
                           {event.title}
                         </h4>
-                        <p class="text-xs text-muted-foreground mt-0.5">
+                        <p class="text-xs sm:text-sm text-muted-foreground mt-1">
                           {formatEventTime(event)}
                         </p>
                         {#if event.location}
-                          <p class="text-xs text-muted-foreground mt-0.5">
+                          <p class="text-xs sm:text-sm text-muted-foreground mt-1">
                             📍 {event.location}
                           </p>
                         {/if}
                         {#if event.confidence && event.confidence < 70}
-                          <Badge variant="destructive" class="mt-1 text-xs">
+                          <Badge variant="destructive" class="mt-2 text-xs">
                             ⚠️ Low confidence
                           </Badge>
                         {/if}
@@ -505,11 +512,11 @@
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          class="h-6 w-6 text-muted-foreground hover:text-foreground"
+                          class="h-7 w-7 text-muted-foreground hover:text-foreground"
                           onclick={() => openEventEditor(event)}
                           title="Edit event"
                         >
-                          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
                           </svg>
                         </Button>
@@ -517,7 +524,7 @@
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          class="h-6 w-6 text-muted-foreground hover:text-destructive"
+                          class="h-7 w-7 text-muted-foreground hover:text-destructive"
                           onclick={() => deleteEvent(event.id)}
                           disabled={deletingEventId === event.id}
                           title="Delete event"
@@ -525,7 +532,7 @@
                           {#if deletingEventId === event.id}
                             <div class="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
                           {:else}
-                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                             </svg>
                           {/if}
