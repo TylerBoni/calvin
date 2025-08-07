@@ -114,8 +114,37 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   }
-  body {
+  html, body {
+    height: 100%;
+    /* Mobile-safe viewport height */
+    height: 100dvh;
     @apply bg-background text-foreground;
+    overscroll-behavior-y: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  #app {
+    height: 100%;
+    /* Mobile-safe viewport height */
+    height: 100dvh;
+    /* Fallback for older browsers */
+    height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overscroll-behavior-y: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Additional mobile optimizations */
+  @supports (height: 100dvh) {
+    html, body, #app {
+      height: 100dvh;
+    }
+  }
+  
+  /* Fallback using custom property for better mobile browser support */
+  @media (max-width: 640px) {
+    html, body, #app {
+      height: calc(var(--vh, 1vh) * 100);
+    }
   }
 }
