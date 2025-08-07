@@ -431,13 +431,13 @@
                            onclick={(e) => { e.stopPropagation(); openEventEditor(event); }}>
                         <div class="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0"></div>
                         <span class="text-xs sm:text-sm truncate text-foreground/80 group-hover:text-foreground font-medium">
+                          {eventInfo.title}
                           {#if event.is_all_day}
-                            <span class="text-muted-foreground">All day:</span>
+                            <span class="text-muted-foreground"> • All day</span>
                           {:else}
                             {@const startTime = new Date(event.start_time)}
-                            <span class="text-muted-foreground">{startTime.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true })}</span>
+                            <span class="text-muted-foreground"> • {startTime.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true })}</span>
                           {/if}
-                          {' '}{eventInfo.title}
                         </span>
                       </div>
                     {/each}
