@@ -19,7 +19,17 @@
   // Router functions
   function navigateTo(path: string, replace = false) {
     const url = new URL(window.location.href);
-    url.pathname = path;
+    
+    // Check if path includes query parameters
+    if (path.includes('?')) {
+      const [pathname, search] = path.split('?');
+      url.pathname = pathname;
+      url.search = '?' + search;
+    } else {
+      url.pathname = path;
+      // Clear search params if not provided
+      url.search = '';
+    }
     
     if (replace) {
       window.history.replaceState({}, '', url.toString());

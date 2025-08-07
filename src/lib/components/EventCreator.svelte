@@ -88,6 +88,23 @@
       showPreview = true;
       isComplete = true;
     }
+    
+    // Focus input after a short delay
+    setTimeout(() => {
+      const input = document.querySelector('input[type="text"]') as HTMLInputElement;
+      if (input) input.focus();
+    }, 100);
+
+    // Handle URL parameters for Siri integration (only if not in edit mode)
+    handleURLParameters();
+
+    // Return cleanup function
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
   });
 
   // Get user's timezone and working hours
@@ -539,25 +556,12 @@
     return result;
   }
 
-  onMount(() => {
-    setTimeout(() => {
-      const input = document.querySelector('input[type="text"]') as HTMLInputElement;
-      if (input) input.focus();
-    }, 100);
-
-    // Handle URL parameters for Siri integration
-    handleURLParameters();
-
-    // Return cleanup function
-    return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-    };
-  });
-
   function handleURLParameters() {
+    // Skip if we're already in edit mode
+    if (isEditing) {
+      return;
+    }
+    
     const urlParams = new URLSearchParams(window.location.search);
     const eventText = urlParams.get('event');
     
