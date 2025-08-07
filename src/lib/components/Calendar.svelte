@@ -81,7 +81,7 @@
 
   // Check if we're on mobile
   function checkMobile() {
-    isMobile = window.innerWidth < 640; // sm breakpoint
+    isMobile = window.innerWidth < 768; // md breakpoint - show events panel for md and above
   }
 
   // Calendar state - compute calendar days for a specific month
@@ -767,13 +767,13 @@
     <div
       class="flex-1 grid grid-cols-1 {isMobile
         ? 'grid-cols-1'
-        : 'xl:grid-cols-3'} gap-4 sm:gap-6 overflow-hidden"
+        : 'md:grid-cols-3'} gap-4 sm:gap-6 overflow-hidden"
     >
       <!-- Calendar Grid -->
       <div
         class="{isMobile
           ? 'col-span-1'
-          : 'xl:col-span-2'} flex flex-col overflow-hidden"
+          : 'md:col-span-2'} flex flex-col overflow-hidden"
       >
         <Card class="rounded-none flex-1 flex flex-col overflow-hidden">
           <CardContent
