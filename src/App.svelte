@@ -44,7 +44,6 @@
     const path = window.location.pathname;
     const params = new URLSearchParams(window.location.search);
     urlParams = params;
-    console.log('updateRoute called - path:', path, 'params:', params.toString());
     
     // Extract view from path
     if (path === '/' || path === '/calendar') {
@@ -55,17 +54,13 @@
       currentView = 'edit';
       // Extract event data from URL params if available
       const eventData = params.get('event');
-      console.log('Edit route - eventData from URL:', eventData);
       if (eventData) {
         try {
           editingEvent = JSON.parse(decodeURIComponent(eventData));
-          console.log('Parsed editingEvent from URL:', editingEvent);
         } catch (e) {
           console.error('Failed to parse event data from URL:', e);
           editingEvent = null;
         }
-      } else {
-        console.log('No event data in URL params, editingEvent remains:', editingEvent);
       }
     } else if (path === '/settings') {
       currentView = 'settings';
@@ -126,12 +121,10 @@
 
   function handleViewChange(event: CustomEvent<{ view: string; event?: any }>) {
     const { view, event: eventData } = event.detail;
-    console.log('handleViewChange called with:', { view, eventData });
     
     // Store event data if we're switching to edit view
     if (view === 'edit' && eventData) {
       editingEvent = eventData;
-      console.log('Setting editingEvent to:', editingEvent);
       // Navigate to edit route with event data
       const eventParam = encodeURIComponent(JSON.stringify(eventData));
       navigateTo(`/edit?event=${eventParam}`);

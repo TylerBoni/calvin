@@ -311,7 +311,6 @@
 
   function openEventEditor(event: Event) {
     // Dispatch event to change view to edit with event data
-    console.log('openEventEditor called with event:', event);
     dispatch('viewChange', { view: 'edit', event });
   }
 

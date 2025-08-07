@@ -50,10 +50,8 @@
 
   // Initialize editing mode and pre-fill data if editing an existing event
   onMount(() => {
-    console.log('EventCreator onMount - editingEvent:', editingEvent);
     if (editingEvent) {
       isEditing = true;
-      console.log('Entering edit mode for event:', editingEvent);
       // Pre-fill the conversation with the existing event data
       const eventStart = new Date(editingEvent.start_time);
       const eventEnd = new Date(editingEvent.end_time);
@@ -90,6 +88,23 @@
       showPreview = true;
       isComplete = true;
     }
+    
+    // Focus input after a short delay
+    setTimeout(() => {
+      const input = document.querySelector('input[type="text"]') as HTMLInputElement;
+      if (input) input.focus();
+    }, 100);
+
+    // Handle URL parameters for Siri integration (only if not in edit mode)
+    handleURLParameters();
+
+    // Return cleanup function
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
   });
 
   // Get user's timezone and working hours
@@ -541,25 +556,12 @@
     return result;
   }
 
-  onMount(() => {
-    setTimeout(() => {
-      const input = document.querySelector('input[type="text"]') as HTMLInputElement;
-      if (input) input.focus();
-    }, 100);
-
-    // Handle URL parameters for Siri integration
-    handleURLParameters();
-
-    // Return cleanup function
-    return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-    };
-  });
-
   function handleURLParameters() {
+    // Skip if we're already in edit mode
+    if (isEditing) {
+      return;
+    }
+    
     const urlParams = new URLSearchParams(window.location.search);
     const eventText = urlParams.get('event');
     
