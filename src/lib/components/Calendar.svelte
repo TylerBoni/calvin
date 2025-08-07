@@ -163,9 +163,9 @@
   }
 
   // Week day labels - reactive to showWeekends changes
-  $: weekDays = showWeekends 
+  let weekDays = $derived(showWeekends 
     ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
 
   async function loadEvents() {
     loading = true;
