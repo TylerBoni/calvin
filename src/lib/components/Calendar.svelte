@@ -6,6 +6,7 @@
   import { Badge } from '$lib/components/ui/badge';
   import { Switch } from '$lib/components/ui/switch';
   import { Input } from '$lib/components/ui/input';
+  import { getEventColorClasses, getEventColorName, type EventColor } from '../utils/colors';
   
   const dispatch = createEventDispatcher();
   
@@ -17,6 +18,7 @@
     is_all_day?: boolean;
     location?: string;
     confidence?: number;
+    color?: EventColor;  // Color coding for events
     user_id: string;
     created_at?: string;
   };
@@ -267,12 +269,9 @@
     })}`;
   }
 
-  function getEventColor(event: Event) {
-    // Color based on event confidence or type
-    if (event.confidence && event.confidence < 70) {
-      return 'destructive';
-    }
-    return 'default';
+  function getEventColorConfig(event: Event) {
+    const color = event.color || 'blue';
+    return getEventColorClasses(color);
   }
 
   function getEventDisplayInfo(event: Event, currentDay: Date) {
@@ -427,9 +426,10 @@
                   <div class="flex-1 w-full space-y-1 overflow-hidden">
                     {#each day.events.slice(0, 3).sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()) as event, eventIndex}
                       {@const eventInfo = getEventDisplayInfo(event, day.date)}
-                      <div class="group cursor-pointer hover:bg-primary/10 rounded px-0.5" 
+                      {@const colorConfig = getEventColorConfig(event)}
+                      <div class="group cursor-pointer rounded px-1 py-0.5 {colorConfig.bg} {colorConfig.hover} border-l-2 {colorConfig.border}" 
                            onclick={(e) => { e.stopPropagation(); openEventEditor(event); }}>
-                        <span class="text-xs sm:text-sm truncate text-foreground/80 group-hover:text-foreground font-medium">
+                        <span class="text-xs sm:text-sm truncate {colorConfig.text} font-medium">
                           {eventInfo.title}
                           {#if event.is_all_day}
                             <span class="text-muted-foreground"> • All day</span>
@@ -484,13 +484,19 @@
               </p>
             {:else}
               {#each dayEvents as event}
-                <Card class="border-l-4 border-l-primary hover:shadow-md transition-shadow">
+                {@const colorConfig = getEventColorConfig(event)}
+                <Card class="border-l-4 {colorConfig.border} hover:shadow-md transition-shadow">
                   <CardContent class="p-3">
                     <div class="flex items-start justify-between gap-2">
                       <div class="flex-1 min-w-0">
-                        <h4 class="font-semibold text-sm sm:text-base">
-                          {event.title}
-                        </h4>
+                        <div class="flex items-center gap-2 mb-1">
+                          <h4 class="font-semibold text-sm sm:text-base">
+                            {event.title}
+                          </h4>
+                          <Badge class="text-xs {colorConfig.badge}">
+                            {getEventColorName(event.color || 'blue')}
+                          </Badge>
+                        </div>
                         <p class="text-xs sm:text-sm text-muted-foreground mt-1">
                           {formatEventTime(event)}
                         </p>

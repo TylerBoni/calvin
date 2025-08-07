@@ -161,14 +161,25 @@ Deno.serve(async (req) => {
       - endTime: end time in "H:MM AM/PM" format (estimate duration)
       - description: brief description
       - location: location if mentioned
+      - color: suggested color category (yellow, orange, blue, purple, green, red, black, pink)
       - confidence: 0-100 (how sure you are)
       - questions: array of follow-up questions if needed
       - chatMessage: natural language response explaining what you scheduled
       
-      For multiple events, return an "events" array with multiple event objects.
-      Each event object should have: title, startDate, startTime, endTime, description, location.
+      Color categorization guide:
+      - yellow: energy, joy, warmth (parties, celebrations, fun activities)
+      - orange: creativity, enthusiasm, excitement (workshops, brainstorming, meetings)
+      - blue: calm, patience, security (appointments, consultations, therapy)
+      - purple: ambition, wisdom, power (leadership, strategy, executive meetings)
+      - green: growth, healing, balance (health, wellness, exercise, nature)
+      - red: action, attention, determination (urgent, deadlines, important)
+      - black: formality, mystery, sophistication (business, interviews, presentations)
+      - pink: kindness, sensitivity, optimism (romantic, dates, care, support)
       
-      For single events, return individual fields: title, startDate, startTime, endTime, description, location.
+      For multiple events, return an "events" array with multiple event objects.
+      Each event object should have: title, startDate, startTime, endTime, description, location, color.
+      
+      For single events, return individual fields: title, startDate, startTime, endTime, description, location, color.
       
       When users ask for "more" events or say "that doesn't feel like enough", create additional events to provide a complete schedule.
       
@@ -210,6 +221,7 @@ Deno.serve(async (req) => {
             endTime: endTime,
             description: event.description,
             location: event.location,
+            color: event.color || 'blue',
             confidence: parsed.confidence || 80
           };
         });
@@ -245,6 +257,7 @@ Deno.serve(async (req) => {
       let finalEndTime = endTime;
       let finalLocation = parsed.location;
       let finalDescription = parsed.description;
+      let finalColor = parsed.color || 'blue';
 
       if (context.isEditing && context.editingEvent) {
         // Use original values if not specified in the AI response
@@ -253,6 +266,7 @@ Deno.serve(async (req) => {
         finalEndTime = endTime || context.editingEvent.endTime;
         finalLocation = parsed.location !== undefined ? parsed.location : context.editingEvent.location;
         finalDescription = parsed.description !== undefined ? parsed.description : context.editingEvent.description;
+        finalColor = parsed.color || context.editingEvent.color || 'blue';
       }
 
       // Return clean response for single event
@@ -263,6 +277,7 @@ Deno.serve(async (req) => {
           endTime: finalEndTime,
           description: finalDescription,
           location: finalLocation,
+          color: finalColor,
           confidence: parsed.confidence || 80,
           questions: parsed.questions || [],
           chatResponse: parsed.chatMessage || `I've ${context.isEditing ? 'updated' : 'scheduled'} "${finalTitle}" for ${finalStartTime}`,

@@ -40,6 +40,9 @@ export const events = pgTable('events', {
   isAllDay: boolean('is_all_day').default(false).notNull(),
   location: text('location'),
   
+  // Color coding
+  color: text('color').default('blue').notNull(), // 'yellow', 'orange', 'blue', 'purple', 'green', 'red', 'black', 'pink'
+  
   // AI extracted data
   originalInput: text('original_input'), // The natural language input
   confidence: integer('confidence'), // AI confidence score 0-100

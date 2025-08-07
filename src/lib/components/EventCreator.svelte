@@ -4,6 +4,8 @@
   import { Card, CardContent } from '$lib/components/ui/card';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
+  import { EVENT_COLORS, suggestEventColor, type EventColor } from '../utils/colors';
+  import ColorPicker from './ui/color-picker.svelte';
   
   const dispatch = createEventDispatcher();
   
@@ -24,6 +26,7 @@
       endTime?: string;
       description?: string;
       location?: string;
+      color?: string;
       confidence: number;
     };
     eventsData?: Array<{
@@ -32,6 +35,7 @@
       endTime?: string;
       description?: string;
       location?: string;
+      color?: string;
       confidence: number;
     }>;
   }>>([]);
@@ -43,6 +47,8 @@
   let retryCount = $state(0);
   let timeoutId = $state<any>(null);
   let lastUserMessage = $state('');
+  let selectedColor = $state<EventColor>('blue');
+  let showColorPicker = $state(false);
 
   // Constants for timeout and retry
   const TIMEOUT_DURATION = 30000; // 30 seconds
@@ -63,8 +69,12 @@
         endTime: editingEvent.end_time,
         location: editingEvent.location || '',
         description: editingEvent.description || '',
-        confidence: editingEvent.confidence || 100
+        confidence: editingEvent.confidence || 100,
+        color: editingEvent.color || 'blue'
       };
+      
+      // Set the selected color for editing
+      selectedColor = editingEvent.color || 'blue';
       
       // Create the first message with event details using the same format as when creating events
       const eventData = {
@@ -212,11 +222,12 @@
     }
 
     // Handle multiple events
-    if (functionData.isMultipleEvents && functionData.events) {
-      currentEventsData = functionData.events.map((event: any) => ({
-        ...event,
-        user_id: user.id
-      }));
+          if (functionData.isMultipleEvents && functionData.events) {
+        currentEventsData = functionData.events.map((event: any) => ({
+          ...event,
+          color: event.color || selectedColor,
+          user_id: user.id
+        }));
       
       if (functionData.questions && functionData.questions.length > 0) {
         // AI has questions
@@ -248,8 +259,14 @@
       // Update current event data
       currentEventData = {
         ...functionData,
-        user_id: user.id
+        user_id: user.id,
+        color: functionData.color || selectedColor
       };
+      
+      // Use the AI-suggested color if available, otherwise use the selected color
+      if (functionData.color) {
+        selectedColor = functionData.color;
+      }
         
       if (functionData.questions && functionData.questions.length > 0) {
         // AI has questions
@@ -268,6 +285,7 @@
           endTime: functionData.endTime,
           description: functionData.description,
           location: functionData.location,
+          color: functionData.color,
           confidence: functionData.confidence
         };
 
@@ -362,6 +380,7 @@
           end_time: event.endTime,
           description: event.description,
           location: event.location,
+          color: selectedColor,
           user_id: user.id
         }));
 
@@ -393,6 +412,7 @@
           end_time: currentEventData.endTime,
           description: currentEventData.description,
           location: currentEventData.location,
+          color: selectedColor,
           user_id: user.id
         };
 
@@ -627,7 +647,14 @@
                     {#if message.role === 'assistant' && message.eventData && message.eventData.confidence >= 70}
                       <div class="mt-4 border-t pt-4">
                         <div class="space-y-2">
-                          <p class="font-medium">{message.eventData.title}</p>
+                          <div class="flex items-center gap-2">
+                            <p class="font-medium">{message.eventData.title}</p>
+                            {#if message.eventData.color}
+                              <span class="px-2 py-1 text-xs rounded-full {EVENT_COLORS[message.eventData.color as EventColor]?.badge || 'bg-blue-500 text-white'}">
+                                {EVENT_COLORS[message.eventData.color as EventColor]?.name || 'Blue'}
+                              </span>
+                            {/if}
+                          </div>
                           <p class="text-sm text-muted-foreground">
                             {formatDateTime(message.eventData.startTime)}
                             {#if message.eventData.endTime}
@@ -640,6 +667,11 @@
                           {#if message.eventData.description}
                             <p class="text-sm text-muted-foreground">{message.eventData.description}</p>
                           {/if}
+                          
+                          <!-- Color Picker -->
+                          <div class="mt-3">
+                            <ColorPicker bind:selectedColor showLabels={true} />
+                          </div>
                         </div>
                         {#if !(isEditing && index === 0)}
                           <div class="mt-4 flex space-x-2">
@@ -680,7 +712,14 @@
                           {#each message.eventsData as event, eventIndex}
                             <div class="border rounded-lg p-3 bg-background">
                               <div class="space-y-2">
-                                <p class="font-medium">{event.title}</p>
+                                <div class="flex items-center gap-2">
+                                  <p class="font-medium">{event.title}</p>
+                                  {#if event.color}
+                                    <span class="px-2 py-1 text-xs rounded-full {EVENT_COLORS[event.color as EventColor]?.badge || 'bg-blue-500 text-white'}">
+                                      {EVENT_COLORS[event.color as EventColor]?.name || 'Blue'}
+                                    </span>
+                                  {/if}
+                                </div>
                                 <p class="text-sm text-muted-foreground">
                                   {formatDateTime(event.startTime)}
                                   {#if event.endTime}
