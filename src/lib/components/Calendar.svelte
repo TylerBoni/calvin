@@ -350,7 +350,7 @@
   });
 </script>
 
-<div class="space-y-4 px-2 sm:px-4 pt-4 sm:pt-6">
+<div class="space-y-4 pt-4 sm:pt-6">
   <!-- Month Navigation and Add Button -->
   <div class="flex items-center justify-between">
     <div class="flex items-center gap-2">
@@ -379,7 +379,7 @@
   <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
     <!-- Calendar Grid -->
     <div class="xl:col-span-2">
-      <Card>
+      <Card class="rounded-none">
         <CardHeader class="pb-2 px-3 sm:px-4">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
@@ -427,9 +427,8 @@
                   <div class="flex-1 w-full space-y-1 overflow-hidden">
                     {#each day.events.slice(0, 3).sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()) as event, eventIndex}
                       {@const eventInfo = getEventDisplayInfo(event, day.date)}
-                      <div class="flex items-center gap-1 group cursor-pointer hover:bg-primary/10 rounded px-0.5" 
+                      <div class="group cursor-pointer hover:bg-primary/10 rounded px-0.5" 
                            onclick={(e) => { e.stopPropagation(); openEventEditor(event); }}>
-                        <div class="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0"></div>
                         <span class="text-xs sm:text-sm truncate text-foreground/80 group-hover:text-foreground font-medium">
                           {eventInfo.title}
                           {#if event.is_all_day}
@@ -458,7 +457,7 @@
 
     <!-- Selected Day Events -->
     <div>
-      <Card class="h-full">
+      <Card class="h-full rounded-none">
         <CardHeader class="pb-3">
           <CardTitle class="text-lg sm:text-xl">
             {selectedDate.toLocaleDateString('en-US', { 

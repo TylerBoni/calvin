@@ -181,7 +181,7 @@
 
 <div class="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex flex-col">
   <!-- Main Content -->
-  <main class="flex-1 max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 pt-2 sm:pt-6 w-full">
+  <main class="flex-1 max-w-7xl mx-auto pt-2 sm:pt-6 w-full">
     {#if !isAuthenticated}
       <!-- Landing page for unauthenticated users -->
       <div class="text-center max-w-4xl mx-auto">
