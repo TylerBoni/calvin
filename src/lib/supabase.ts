@@ -136,11 +136,14 @@ export const signUp = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`
+      }
     });
     if (error) throw error;
     
-    // Ensure user exists in local database (with timeout protection)
-    if (data.user) {
+    // Only sync user to local database if email is confirmed
+    if (data.user && data.user.email_confirmed_at) {
       try {
         await ensureUserInLocalDB(data.user);
       } catch (syncError) {
@@ -149,7 +152,7 @@ export const signUp = async (email: string, password: string) => {
       }
     }
     
-    return data;
+    return { data, error: null };
   } catch (error) {
     console.error('Sign up error:', error);
     throw error;

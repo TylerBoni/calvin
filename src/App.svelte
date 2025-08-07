@@ -64,9 +64,39 @@
       }
     } else if (path === '/settings') {
       currentView = 'settings';
+    } else if (path === '/auth/callback') {
+      // Handle auth callback for email confirmation
+      handleAuthCallback();
     } else {
       // Handle unknown routes - redirect to calendar
       navigateTo('/calendar', true);
+    }
+  }
+
+  // Handle auth callback for email confirmation
+  async function handleAuthCallback() {
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) throw error;
+      
+      if (data.session?.user) {
+        // User is now authenticated, sync to local database
+        await ensureUserInLocalDB(data.session.user);
+        
+        // Update authentication state
+        isAuthenticated = true;
+        user = data.session.user;
+        
+        // Redirect to calendar
+        navigateTo('/calendar', true);
+      } else {
+        // No session found, redirect to home
+        navigateTo('/', true);
+      }
+    } catch (error) {
+      console.error('Auth callback error:', error);
+      // Redirect to home on error
+      navigateTo('/', true);
     }
   }
 
@@ -184,58 +214,86 @@
   <main class="flex-1 max-w-7xl mx-auto w-full flex flex-col overflow-hidden h-full">
     {#if !isAuthenticated}
       <!-- Landing page for unauthenticated users -->
-      <div class="text-center max-w-4xl mx-auto">
-        <div class="mb-8 sm:mb-12">
-          <h2 class="text-3xl sm:text-5xl font-bold text-slate-900 dark:text-white mb-4 sm:mb-6">
-            Schedule with
-            <span class="bg-gradient-to-r from-primary-600 to-purple-600 bg-clip-text text-transparent">
-              Natural Language
-            </span>
-          </h2>
-          <p class="text-lg sm:text-xl text-slate-600 dark:text-slate-300 mb-6 sm:mb-8 max-w-2xl mx-auto px-4">
-            Just say "Meeting with John tomorrow at 2pm" and let our AI handle the rest. 
-            No more clicking through calendars.
-          </p>
-          <button 
-            onclick={handleLogin}
-            class="px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-primary-600 to-purple-600 hover:from-primary-700 hover:to-purple-700 text-white rounded-xl font-semibold text-base sm:text-lg transition-all transform hover:scale-105 shadow-lg"
-          >
-            Get Started Free
-          </button>
-        </div>
-
-        <!-- Feature showcase -->
-        <div class="grid md:grid-cols-3 gap-4 sm:gap-8 mt-12 sm:mt-16 px-4">
-          <div class="p-4 sm:p-6 glass rounded-2xl">
-            <div class="w-10 h-10 sm:w-12 sm:h-12 bg-primary-100 rounded-xl flex items-center justify-center mb-3 sm:mb-4 mx-auto">
-              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
-              </svg>
+      <div class="flex flex-col min-h-full">
+        <!-- Header Section with proper padding -->
+        <header class="pt-safe-top p-6 px-4 sm:px-6 lg:px-8">
+          <div class="max-w-4xl mx-auto">
+            <!-- Logo/Brand Section -->
+            <div class="flex items-center justify-center">
+              <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
+                  <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                  </svg>
+                </div>
+                <h1 class="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">
+                  Calvin
+                </h1>
+              </div>
             </div>
-            <h3 class="text-base sm:text-lg font-semibold text-slate-900 dark:text-white mb-2">AI-Powered</h3>
-            <p class="text-sm sm:text-base text-slate-600 dark:text-slate-300">Advanced natural language processing understands your intent perfectly.</p>
           </div>
+        </header>
 
-          <div class="p-4 sm:p-6 glass rounded-2xl">
-            <div class="w-10 h-10 sm:w-12 sm:h-12 bg-success-100 rounded-xl flex items-center justify-center mb-3 sm:mb-4 mx-auto">
-              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-success-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-              </svg>
+        <!-- Hero Section -->
+        <section class="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8 pb-safe-bottom">
+          <div class="text-center max-w-4xl mx-auto">
+            <div class="mb-8 sm:mb-12">
+              <h2 class="text-3xl sm:text-5xl lg:text-6xl font-bold text-slate-900 dark:text-white mb-4 sm:mb-6 leading-tight">
+                Schedule with
+                <span class="bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">
+                  Natural Language
+                </span>
+              </h2>
+              <p class="text-lg sm:text-xl lg:text-2xl text-slate-600 dark:text-slate-300 mb-6 sm:mb-8 max-w-3xl mx-auto leading-relaxed">
+                Just say "Meeting with John tomorrow at 2pm" and let our AI handle the rest. 
+                No more clicking through calendars.
+              </p>
+              
+              <!-- CTA Buttons -->
+              <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                <button 
+                  onclick={handleLogin}
+                  class="px-8 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl font-semibold text-lg sm:text-xl transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
+                >
+                  Get Started Free
+                </button>
+              </div>
             </div>
-            <h3 class="text-base sm:text-lg font-semibold text-slate-900 dark:text-white mb-2">Lightning Fast</h3>
-            <p class="text-sm sm:text-base text-slate-600 dark:text-slate-300">Schedule events in seconds with natural conversation.</p>
-          </div>
 
-          <div class="p-4 sm:p-6 glass rounded-2xl">
-            <div class="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-3 sm:mb-4 mx-auto">
-              <svg class="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
-              </svg>
+            <!-- Feature showcase -->
+            <div class="grid md:grid-cols-3 gap-6 sm:gap-8 mt-16 sm:mt-20 lg:mt-24">
+              <div class="p-6 sm:p-8 glass rounded-2xl hover:scale-105 transition-transform duration-300">
+                <div class="w-12 h-12 sm:w-14 sm:h-14 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center mb-4 sm:mb-6 mx-auto">
+                  <svg class="w-6 h-6 sm:w-7 sm:h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                  </svg>
+                </div>
+                <h3 class="text-lg sm:text-xl font-semibold text-slate-900 dark:text-white mb-3">AI-Powered</h3>
+                <p class="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">Advanced natural language processing understands your intent perfectly.</p>
+              </div>
+
+              <div class="p-6 sm:p-8 glass rounded-2xl hover:scale-105 transition-transform duration-300">
+                <div class="w-12 h-12 sm:w-14 sm:h-14 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center mb-4 sm:mb-6 mx-auto">
+                  <svg class="w-6 h-6 sm:w-7 sm:h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                  </svg>
+                </div>
+                <h3 class="text-lg sm:text-xl font-semibold text-slate-900 dark:text-white mb-3">Lightning Fast</h3>
+                <p class="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">Schedule events in seconds with natural conversation.</p>
+              </div>
+
+              <div class="p-6 sm:p-8 glass rounded-2xl hover:scale-105 transition-transform duration-300">
+                <div class="w-12 h-12 sm:w-14 sm:h-14 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center mb-4 sm:mb-6 mx-auto">
+                  <svg class="w-6 h-6 sm:w-7 sm:h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
+                  </svg>
+                </div>
+                <h3 class="text-lg sm:text-xl font-semibold text-slate-900 dark:text-white mb-3">Smart Scheduling</h3>
+                <p class="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">Automatically finds the best times and avoids conflicts.</p>
+              </div>
             </div>
-            <h3 class="text-base sm:text-lg font-semibold text-slate-900 dark:text-white mb-2">Smart Scheduling</h3>
-            <p class="text-sm sm:text-base text-slate-600 dark:text-slate-300">Automatically finds the best times and avoids conflicts.</p>
           </div>
-        </div>
+        </section>
       </div>
     {:else}
       <!-- Authenticated user interface -->
@@ -243,18 +301,9 @@
         {#key calendarKey}
           <Calendar {user} on:logout={handleLogout} />
         {/key}
-      {:else if currentView === 'settings'}
-        <div class="max-w-2xl mx-auto">
-          <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">Settings</h2>
-          <div class="glass rounded-2xl p-6">
-            <p class="text-slate-600 dark:text-slate-300">Settings panel coming soon...</p>
-          </div>
-        </div>
       {/if}
     {/if}
   </main>
-
-
 
   <!-- Auth Modal -->
   {#if showAuthModal}
