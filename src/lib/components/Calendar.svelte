@@ -162,8 +162,8 @@
     return days;
   }
 
-  // Week day labels
-  const weekDays = showWeekends 
+  // Week day labels - reactive to showWeekends changes
+  $: weekDays = showWeekends 
     ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
     : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
