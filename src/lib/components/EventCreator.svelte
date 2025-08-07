@@ -50,8 +50,10 @@
 
   // Initialize editing mode and pre-fill data if editing an existing event
   onMount(() => {
+    console.log('EventCreator onMount - editingEvent:', editingEvent);
     if (editingEvent) {
       isEditing = true;
+      console.log('Entering edit mode for event:', editingEvent);
       // Pre-fill the conversation with the existing event data
       const eventStart = new Date(editingEvent.start_time);
       const eventEnd = new Date(editingEvent.end_time);
