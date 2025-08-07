@@ -83,8 +83,8 @@
 </script>
 
 <Drawer bind:open>
-  <DrawerContent class="max-h-[90vh] z-60">
-    <div class="flex-1 scroll-area">
+  <DrawerContent class="h-[100dvh] max-h-[100dvh] z-60">
+    <div class="flex-1 overflow-hidden h-full">
       <EventCreator 
         bind:this={eventCreatorRef}
         {user} 

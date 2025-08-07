@@ -774,7 +774,7 @@
 
 <div class="flex flex-col h-full">
     <!-- Chat Messages -->
-    <div class="flex-1 overflow-y-auto p-4 space-y-4">
+    <div class="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 pb-safe">
       {#if conversation.length === 0}
         <div class="flex items-start space-x-3">
           <div class="flex-1">
@@ -1033,7 +1033,7 @@
     </div>
 
     <!-- Input Area -->
-    <div class="p-4 border-t bg-background">
+    <div class="p-4 pb-safe border-t bg-background sticky bottom-0">
       <form onsubmit={handleSubmit} class="flex space-x-3">
         <Input
           bind:value={inputText}
