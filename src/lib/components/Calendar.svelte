@@ -411,7 +411,7 @@
               {#each getCalendarDays() as day, index}
                 <Button
                   variant="ghost"
-                  class="h-20 sm:h-24 md:h-28 flex flex-col items-start justify-start p-1.5 sm:p-2 rounded-md border border-transparent
+                  class="h-20 sm:h-24 md:h-28 flex flex-col items-start justify-start p-0 rounded-md border border-transparent
                          {day.isCurrentMonth ? '' : 'text-muted-foreground opacity-50'}
                          {day.isSelected ? 'bg-accent text-accent-foreground border-accent' : ''}
                          {day.isToday ? 'bg-primary/10 text-primary ring-2 ring-primary/50' : ''}
